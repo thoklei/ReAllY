@@ -56,7 +56,11 @@ if __name__== "__main__":
     state = np.expand_dims(state, axis=0)
     input_shape = state.shape
 
-    agent = Agent(ModelContunous, input_shape=input_shape, type='continous_normal_diagonal', value_estimate=True)
+    #agent = Agent(MyModel, input_shape=input_shape, type='continous_normal_diagonal', value_estimate=True)
 
-    agent_out = agent.act(state, True)
-    print(agent_out)
+
+    box = RunnerBox(Agent, MyModel, 'CartPole-v0', returns=['reward', 'value_estimate', 'monte_carlo'], type='thompson', value_estimate=True, input_shape=input_shape)
+
+    data = box.run(100)
+    print(data.keys())
+    #print(data)

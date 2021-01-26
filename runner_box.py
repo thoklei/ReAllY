@@ -18,15 +18,15 @@ class RunnerBox():
         gamma: float, discount factor for monte carlo return
             """
 
-    def __init__(agent, environment_name, returns=['reward'], gamma=None):
+    def __init__(self, agent, model, environment_name, returns=['reward'], gamma=0.99 ,weights=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
 
-        self.agent = agent()
-        self.environment = gym.make(environment_name)
+        self.agent = agent(model ,weights, input_shape, type, temperature, epsilon, value_estimate)
+        self.env = gym.make(environment_name)
         self.returns = returns
         self.gamma = gamma
 
 
-    def run(num_steps):
+    def run(self, num_steps):
 
         return_log_prob = False
         return_value_estimate = False
@@ -46,23 +46,31 @@ class RunnerBox():
 
             if key == 'log_prob':
                 return_log_prob = True
-            elif key == 'value_estimate' and agent.value_estimate:
+            elif key == 'value_estimate' and self.agent.value_estimate:
                 return_value_estimate = True
-            elif key == 'monte_carlo' and gamma is not None:
+            elif key == 'monte_carlo' and self.gamma is not None:
                 return_monte_carlo = True
+            elif key == 'reward':
+                return_reward = True
             else:
                 print(f"unsupported key: {key}")
 
         for t in range(num_steps):
             self.env.render()
             state = np.expand_dims(state, axis=0)
-            agent_out = agent.act(state, return_log_prob)
-            state, reward, done, info = self.env.step(agent_out['action'])
+            agent_out = self.agent.act(state, return_log_prob)
 
-            # append optional in time values to data data
-            data_agg['action'].append(agent_out['action'])
+            # if continous pass on array as action
+            if self.agent.type == 'continous_normal_diagonal':
+                state, reward, done, info = self.env.step(agent_out['action'])
+                data_agg['action'].append(agent_out['action'])
+
+            else:
+                state, reward, done, info = self.env.step(*agent_out['action'])
+                data_agg['action'].append(*agent_out['action'])
             data_agg['state'].append(state)
 
+            # append optional in time values to data data
             if return_log_prob: data_agg['log_prob'].append(agent_out['log_probability'])
             if return_reward: data_agg['reward'].append(reward)
             if return_value_estimate: data_agg['value_estimate'].append(agent_out['value_estimate'])
@@ -70,7 +78,7 @@ class RunnerBox():
             if done:
                 break
 
-        if return_monte_carlo: data_agg['monte_carlo'] = discount_cumsum(data_agg['reward'], gamma)
+        if return_monte_carlo: data_agg['monte_carlo'] = discount_cumsum(data_agg['reward'], self.gamma)
 
 
         return data_agg

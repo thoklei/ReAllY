@@ -55,7 +55,6 @@ class Agent():
         output = {}
         # creating network dict
         network_out = self.model(state)
-        print('net_out', network_out)
 
         if self.type == 'epsilon_greedy':
             logits = network_out['output'].numpy()
