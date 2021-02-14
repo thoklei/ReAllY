@@ -26,7 +26,6 @@ class RunnerBox():
                 action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
                 temperature: float, temperature for thomson sampling, defaults to 1
                 epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
-                value_estimate: boolean, if agent returns value estimate, defaults to false
                 weights: weights of the model, not needed if input_shape is given
                 needs_output_shape = True, boolean specifying if the number of actions needs to be passed on to the model for first initialization
                 gamma: float, discount factor for monte carlo return, defaults to 0.99

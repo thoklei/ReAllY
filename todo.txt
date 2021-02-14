@@ -2,7 +2,11 @@
 
 # sampling manager: implement stop when total steps reached x
 # sampling manager: store funciton x
-# sampling manager: create tf dataset
+# sampling manager: create tf dataset x
+
+FANCY:
+- print info
+- print progress for data agg
 
 
 

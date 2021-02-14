@@ -23,7 +23,6 @@ class SampleManager():
         gamma: float, discount factor for monte carlo return, defaults to 0.99
         temperature: float, temperature for thomson sampling, defaults to 1
         epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
-        value_estimate: boolean, if agent returns value estimate, defaults to false
         weights: weights of the model, not needed if input_shape is given
         needs_output_shape: True, boolean specifying if the number of actions needs to be passed on to the model for first initialization
         remote_min_returns: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
@@ -57,13 +56,15 @@ class SampleManager():
             type = kwargs['action_sampling_type']
             if type not in ['thompson', 'epsilon_greedy', 'continous_normal_diagonal']:
                 print(f'unsupported sampling type: {type}. assuming thompson sampling instead.')
-                kwargs['action_sampling_type'] = 'thompson'
+                self.kwargs['action_sampling_type'] = 'thompson'
 
 
         # chck return specifications
         for r in returns:
             if r not in ['log_prob', 'monte_carlo', 'value_estimate']:
                 print(f'unsuppoerted return key: {r}')
+                if r == 'value_estimate':
+                    self.kwargs['value_estimate'] = True
             else: self.data[r] = []
 
         ## check if model can be initialized
@@ -78,32 +79,33 @@ class SampleManager():
             self.runner_steps = kwargs['num_episodes']
             if 'num_steps' in kwargs.keys():
                 raise 'Both episode mode and step mode for runner sampling are specified. Please only specify one.'
-            kwargs.pop('num_episodes')
+            self.kwargs.pop('num_episodes')
         elif 'num_steps' in kwargs.keys():
             sef.runner_steps = kwargs['num_steps']
             self.run_episodes = False
-            kwargs.pop('num_steps')
+            self.kwargs.pop('num_steps')
 
         # check for remote process specifications
         if 'remote_min_returns' in kwargs.keys():
             self.remote_min_returns = kwargs['remote_min_returns']
-            kwargs.pop('remote_min_returns')
+            self.kwargs.pop('remote_min_returns')
         else:
             # defaults to 10% of remote runners, but minimum 1
             self.remote_min_returns = max([int(0.1 * self.num_parallel),1])
 
         if 'remote_time_out' in kwargs.keys():
             self.remote_time_out = kwargs['remote_time_out']
-            kwargs.pop('remote_time_out')
+            self.kwargs.pop('remote_time_out')
         else:
             # defaults to None, i.e. wait for remote_min_returns to be returned irrespective of time
             self.remote_time_out = None
 
 
     def _get_data(self):
-        not_done = True
+        # surrpressing warnings
         ray.init(log_to_driver=False)
 
+        not_done = True
         # create list of runnor boxes
         runner_boxes = [RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=i, returns=self.returns, **self.kwargs) for i in range(self.num_parallel)]
         # as long as not yet reached number of total steps
@@ -111,7 +113,6 @@ class SampleManager():
         while not_done:
 
             if self.run_episodes:
-                print('we are here')
                 ready, remaining = ray.wait([b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returns, timeout=self.remote_time_out)
             else:
                 ready, remaining = ray.wait([b.run_n_steps.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returnso, timeout=self.remote_time_out)
@@ -136,10 +137,9 @@ class SampleManager():
             t += 1
         # return data
 
-    # sores results and asserts if we are done
+    # stores results and asserts if we are done
     def _store(self, results):
         not_done = True
-
         # results is a list of dctinaries
         assert self.data.keys() == results[0].keys(), "data keys and return keys do not matach"
 
