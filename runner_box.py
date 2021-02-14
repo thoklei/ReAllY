@@ -23,7 +23,7 @@ class RunnerBox():
                 supported are: 'value_estimate', 'log_prob', 'monte_carlo'
 
         kwargs:
-                actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+                action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
                 temperature: float, temperature for thomson sampling, defaults to 1
                 epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
                 value_estimate: boolean, if agent returns value estimate, defaults to false
@@ -49,7 +49,7 @@ class RunnerBox():
         data_agg['state'] = []
         data_agg['reward'] = []
         data_agg['state_new'] = []
-        data_agg['not_done'] = []
+        data_agg['terminal'] = []
 
         # initilize optional returns
         for key in self.returns:
@@ -93,7 +93,7 @@ class RunnerBox():
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['not_done'].append(int(done))
+                self.data_agg['terminal'].append(int(done))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
@@ -106,7 +106,6 @@ class RunnerBox():
 
         return self.data_agg, self.runner_position
 
-    ray.remote(num_returns=2)
     def run_n_episodes(self, num_episodes, max_env = None):
         if max_env is not None: self.env.__num_steps = max_env
         state = self.env.reset()
@@ -128,7 +127,7 @@ class RunnerBox():
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['not_done'].append(int(done))
+                self.data_agg['terminal'].append(int(done))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])

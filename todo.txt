@@ -1,8 +1,8 @@
 # big box -> check kwargs
 
-# sampling manager: implement stop when total steps reached
-# sampling manager: store funciton
-# sampling manager: sample function
+# sampling manager: implement stop when total steps reached x
+# sampling manager: store funciton x
+# sampling manager: create tf dataset
 
 
 

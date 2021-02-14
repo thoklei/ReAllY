@@ -2,6 +2,7 @@ import os
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import ray
+import tensorflow as tf
 from agent import Agent
 from runner_box import RunnerBox
 
@@ -37,12 +38,17 @@ class SampleManager():
         self.num_parallel = num_parallel
         self.total_steps = total_steps
         self.returns = returns
-        self.data = {}
         self.kwargs = kwargs
 
+        # initilize empty dete aggregator
+        self.data = {}
+        self.data['action'] = []
+        self.data['state'] = []
+        self.data['reward'] = []
+        self.data['state_new'] = []
+        self.data['terminal'] = []
 
-
-        ## TODO some
+        ## TODO some checkups
 
         assert self.num_parallel > 0, 'num_parallel hast to be greater than 0!'
 
@@ -52,6 +58,7 @@ class SampleManager():
             if type not in ['thompson', 'epsilon_greedy', 'continous_normal_diagonal']:
                 print(f'unsupported sampling type: {type}. assuming thompson sampling instead.')
                 kwargs['action_sampling_type'] = 'thompson'
+
 
         # chck return specifications
         for r in returns:
@@ -71,41 +78,43 @@ class SampleManager():
             self.runner_steps = kwargs['num_episodes']
             if 'num_steps' in kwargs.keys():
                 raise 'Both episode mode and step mode for runner sampling are specified. Please only specify one.'
+            kwargs.pop('num_episodes')
         elif 'num_steps' in kwargs.keys():
             sef.runner_steps = kwargs['num_steps']
             self.run_episodes = False
+            kwargs.pop('num_steps')
 
         # check for remote process specifications
         if 'remote_min_returns' in kwargs.keys():
             self.remote_min_returns = kwargs['remote_min_returns']
+            kwargs.pop('remote_min_returns')
         else:
             # defaults to 10% of remote runners, but minimum 1
-            self.remote_min_returns = max([int(0.1) * self.num_parallel,1])
+            self.remote_min_returns = max([int(0.1 * self.num_parallel),1])
 
         if 'remote_time_out' in kwargs.keys():
             self.remote_time_out = kwargs['remote_time_out']
+            kwargs.pop('remote_time_out')
         else:
             # defaults to None, i.e. wait for remote_min_returns to be returned irrespective of time
             self.remote_time_out = None
 
 
+    def _get_data(self):
+        not_done = True
+        ray.init(log_to_driver=False)
 
-
-
-
-    def get_data(self):
-        not_full = False
-        ray.init()
-        # create list of box object ids
-        box_ids = [RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=i, returns=self.returns, **self.kwargs) for i in range(self.num_parallel)]
+        # create list of runnor boxes
+        runner_boxes = [RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=i, returns=self.returns, **self.kwargs) for i in range(self.num_parallel)]
         # as long as not yet reached number of total steps
         t = 0
-        while t<10:
+        while not_done:
 
             if self.run_episodes:
-                ready, remaining = ray.wait([b.run_n_episodes.remote(self.total_steps) for b in box_ids], num_returns=self.remote_min_returns, timeout=self.remote_time_out)
+                print('we are here')
+                ready, remaining = ray.wait([b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returns, timeout=self.remote_time_out)
             else:
-                ready, remaining = ray.wait([b.run_n_steps.remote(self.total_steps) for b in box_ids], num_returns=self.remote_min_returnso, timeout=self.remote_time_out)
+                ready, remaining = ray.wait([b.run_n_steps.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returnso, timeout=self.remote_time_out)
 
             # returns list of tuples (data_agg, index)
             returns = ray.get(ready)
@@ -117,18 +126,46 @@ class SampleManager():
                 indexes.append(index)
 
             # store data from dones
-            self.store(results)
+            print(f'iteration: {t}, storing results of {len(results)} runners')
+            not_done = self._store(results)
             # get boxes that are alreadey done
-            accesed_mapping = map(box_ids.__getitem__, indexes)
+            accesed_mapping = map(runner_boxes.__getitem__, indexes)
             dones = list(accesed_mapping)
             # concatenate dones and not dones
-            box_ids = dones + box_ids
+            runner_boxes = dones + runner_boxes
             t += 1
         # return data
 
-    def store(self, results):
-        print(f'results {results}')
+    # sores results and asserts if we are done
+    def _store(self, results):
+        not_done = True
 
-    def sample(self, sample_size):
+        # results is a list of dctinaries
+        assert self.data.keys() == results[0].keys(), "data keys and return keys do not matach"
 
-        pass
+        for r in results:
+            for k in self.data.keys():
+                self.data[k].extend(r[k])
+
+        # stop if enought data is aggregated
+        if len(self.data['terminal']) > self.total_steps:
+            not_done = False
+
+        return not_done
+
+    def create_dictionary_of_datasets(self, new=True):
+        if new: self._get_data()
+        dataset_dict = {}
+        for k in self.data.keys():
+            dataset_dict[k] = tf.data.Dataset.from_tensor_slices(self.data[k])
+        return dataset_dict
+
+    def create_dataset(self, new=True):
+        if new: self._get_data()
+        datasets = []
+        for k in self.data.keys():
+            datasets.append(tf.data.Dataset.from_tensor_slices(self.data[k]))
+        dataset = tf.data.Dataset.zip(tuple(datasets))
+
+
+        return dataset, self.data.keys()
