@@ -1,13 +1,13 @@
-# test script for ebugging
-from sample_manager import SampleManager
+# test script for debugging
+
 import os
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
 import gym
-from agent import Agent
-from runner_box import RunnerBox
+
+from really.sample_manager import SampleManager
 
 
 

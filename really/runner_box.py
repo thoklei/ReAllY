@@ -5,9 +5,7 @@ import tensorflow as tf
 import numpy as np
 import gym
 import ray
-
-
-from utils import discount_cumsum
+from really.utils import discount_cumsum
 
 @ray.remote
 class RunnerBox():
