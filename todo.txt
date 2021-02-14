@@ -1,0 +1,35 @@
+# big box -> check kwargs
+
+# sampling manager: implement stop when total steps reached
+# sampling manager: store funciton
+# sampling manager: sample function
+
+
+
+# maybe needed later
+agent_kwargs = {}
+  # check if model can be initialized
+  if 'weights' in kwargs.keys():
+      weights = kwargs['weights']
+  elif 'input_shape' in kwargs.keys():
+      agent_kwargs[''] = kwargs['input_shape']
+  else:
+      raise 'Model can not be initialized, please specify weights or an input size'
+
+  # assert if model needs output shape to be initialized
+  num_actions = None
+  if 'needs_output_shape' in kwargs.keys():
+      if kwargs['needs_output_shape']:
+          num_actions = self.env.action_space
+
+
+  # assert specifications for action sampling
+  if 'type' == 'thompson':
+      if 'temperature' in kwargs.keys():
+          temperature = kwargs['temperature']
+      else: temperature = 1
+
+  if 'type' == 'epsilon_greedy':
+      if 'epsilon' in kwargs.keys():
+          epsilon = kwargs['epsilon']
+      else: epsilon = 0.95

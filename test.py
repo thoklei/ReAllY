@@ -1,5 +1,8 @@
 # test script for ebugging
-
+from sample_manager import SampleManager
+import os
+# only print error messages
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
 import gym
@@ -55,12 +58,13 @@ if __name__== "__main__":
     state = env.reset()
     state = np.expand_dims(state, axis=0)
     input_shape = state.shape
+    num_actions = env.action_space.n
 
     #agent = Agent(MyModel, input_shape=input_shape, type='continous_normal_diagonal', value_estimate=True)
-
-
-    box = RunnerBox(Agent, MyModel, 'CartPole-v0', returns=['reward', 'value_estimate', 'monte_carlo'], type='thompson', value_estimate=True, input_shape=input_shape)
-
-    data = box.run(100)
-    print(data.keys())
+    ## # TODO: move to big box
+    #box = RunnerBox(Agent, MyModel, 'CartPole-v0', type='thomson', returns=['value_estimate', 'monte_carlo'], num_actions=True, value_estimate=True, input_shape=input_shape)
+    manager = SampleManager(MyModel, 'CartPole-v0', 2, 1, returns=['value_estimate', 'monte_carlo'], action_sampling_type='thomson', num_actions=True, value_estimate=True, input_shape=input_shape)
+    manager.get_data()
+    #data = box.run_n_episodes(100)
+    #([data[k] for k in data.keys()])
     #print(data)
