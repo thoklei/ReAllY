@@ -1,5 +1,4 @@
 # test script for debugging
-
 import os
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -59,17 +58,21 @@ if __name__== "__main__":
     state = np.expand_dims(state, axis=0)
     input_shape = state.shape
     num_actions = env.action_space.n
+    model = MyModel(num_actions)
+    model(tf.ones(input_shape))
+    weights = model.get_weights()
 
     kwargs = {
         'model' : MyModel,
         'environment_name' :'CartPole-v0',
-        'num_parallel' :10,
+        'num_parallel' :1,
         'total_steps' :100,
         'returns' :['value_estimate', 'monte_carlo'],
         'action_sampling_type' :'thompson',
-        'num_actions' :True,
-        'input_shape' : input_shape,
-        'remote_min_returns' :3
+        'output_shape' : num_actions,
+        'remote_min_returns' :1,
+        'weights' : weights,
+        'num_steps': 2
 
     }
     manager = SampleManager(**kwargs)

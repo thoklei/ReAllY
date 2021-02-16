@@ -81,7 +81,7 @@ class SampleManager():
                 raise 'Both episode mode and step mode for runner sampling are specified. Please only specify one.'
             self.kwargs.pop('num_episodes')
         elif 'num_steps' in kwargs.keys():
-            sef.runner_steps = kwargs['num_steps']
+            self.runner_steps = kwargs['num_steps']
             self.run_episodes = False
             self.kwargs.pop('num_steps')
 
@@ -101,7 +101,8 @@ class SampleManager():
             self.remote_time_out = None
 
 
-    def _get_data(self):
+    def get_data(self, do_print=False):
+        ray.shutdown()
         # surrpressing warnings
         ray.init(log_to_driver=False)
 
@@ -115,7 +116,7 @@ class SampleManager():
             if self.run_episodes:
                 ready, remaining = ray.wait([b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returns, timeout=self.remote_time_out)
             else:
-                ready, remaining = ray.wait([b.run_n_steps.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returnso, timeout=self.remote_time_out)
+                ready, remaining = ray.wait([b.run_n_steps.remote(self.runner_steps) for b in runner_boxes], num_returns=self.remote_min_returns, timeout=self.remote_time_out)
 
             # returns list of tuples (data_agg, index)
             returns = ray.get(ready)
@@ -127,7 +128,7 @@ class SampleManager():
                 indexes.append(index)
 
             # store data from dones
-            print(f'iteration: {t}, storing results of {len(results)} runners')
+            if do_print: print(f'iteration: {t}, storing results of {len(results)} runners')
             not_done = self._store(results)
             # get boxes that are alreadey done
             accesed_mapping = map(runner_boxes.__getitem__, indexes)
@@ -135,7 +136,7 @@ class SampleManager():
             # concatenate dones and not dones
             runner_boxes = dones + runner_boxes
             t += 1
-        # return data
+        return self.data
 
     # stores results and asserts if we are done
     def _store(self, results):
@@ -153,15 +154,17 @@ class SampleManager():
 
         return not_done
 
+
     def create_dictionary_of_datasets(self, new=True):
-        if new: self._get_data()
+        if new: self.get_data()
         dataset_dict = {}
         for k in self.data.keys():
             dataset_dict[k] = tf.data.Dataset.from_tensor_slices(self.data[k])
         return dataset_dict
 
+
     def create_dataset(self, new=True):
-        if new: self._get_data()
+        if new: self.get_data()
         datasets = []
         for k in self.data.keys():
             datasets.append(tf.data.Dataset.from_tensor_slices(self.data[k]))
@@ -169,3 +172,20 @@ class SampleManager():
 
 
         return dataset, self.data.keys()
+
+
+    def get_agent(self):
+        ray.shutdown()
+        # surrpressing warnings
+        ray.init(log_to_driver=False)
+        runner_box = RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=0, returns=self.returns, **self.kwargs)
+        agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
+        agent = Agent(self.model, **agent_kwargs)
+        return agent
+
+
+    def set_agent(self, new_weights):
+        self.kwargs['weights'] = new_weights
+
+    def set_temperature(self, temperature):
+        self.kwargs['temperature'] = temperature

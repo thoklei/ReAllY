@@ -25,13 +25,17 @@ class RunnerBox():
                 temperature: float, temperature for thomson sampling, defaults to 1
                 epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
                 weights: weights of the model, not needed if input_shape is given
-                needs_output_shape = True, boolean specifying if the number of actions needs to be passed on to the model for first initialization
+                output_shape: optional, specifying output size of model
                 gamma: float, discount factor for monte carlo return, defaults to 0.99
             """
 
     def __init__(self, agent, model, environment_name, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
 
         self.env = gym.make(environment_name)
+        state = self.env.reset()
+        state = np.expand_dims(state, axis=0)
+        kwargs['input_shape'] = state.shape
+        self.agent_kwargs = kwargs
         self.agent = agent(model, **kwargs)
         self.runner_position = runner_position
         self.returns = returns
@@ -65,7 +69,7 @@ class RunnerBox():
 
         self.data_agg = data_agg
 
-    @ray.remote(num_returns=2)
+    #@ray.remote(num_returns=2)
     def run_n_steps(self, num_steps, max_env=None):
 
         if max_env is not None: self.env.__num_steps = max_env
@@ -77,7 +81,7 @@ class RunnerBox():
             new_state = np.expand_dims(self.env.reset(), axis=0)
             while not done:
                 state = new_state
-                agent_out = self.agent.act(state, self.return_log_prob)
+                agent_out = self.agent.act_experience(state, self.return_log_prob)
 
                 # S
                 self.data_agg['state'].append(state)
@@ -90,7 +94,7 @@ class RunnerBox():
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['terminal'].append(int(done))
+                self.data_agg['terminal'].append(float(int(done)))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
@@ -103,6 +107,7 @@ class RunnerBox():
 
         return self.data_agg, self.runner_position
 
+    #@ray.remote(num_returns=2)
     def run_n_episodes(self, num_episodes, max_env = None):
         if max_env is not None: self.env.__num_steps = max_env
         state = self.env.reset()
@@ -111,7 +116,7 @@ class RunnerBox():
             new_state = np.expand_dims(self.env.reset(), axis=0)
             while not done:
                 state = new_state
-                agent_out = self.agent.act(state, self.return_log_prob)
+                agent_out = self.agent.act_experience(state, self.return_log_prob)
 
                 # S
                 self.data_agg['state'].append(state)
@@ -133,3 +138,7 @@ class RunnerBox():
         if self.return_monte_carlo: self.data_agg['monte_carlo'] = discount_cumsum(self.data_agg['reward'], self.gamma)
 
         return self.data_agg, self.runner_position
+
+    def get_agent_kwargs(self):
+        agent_kwargs = self.agent_kwargs
+        return agent_kwargs

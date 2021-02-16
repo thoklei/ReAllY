@@ -1,0 +1,48 @@
+import numpy as np
+import random
+import os
+import tensorflow as tf
+
+class Replay_buffer:
+
+    def __init__(self, size, keys):
+        self.buffer = {}
+        for k in keys:
+            self.buffer[k] = []
+        self.size = size
+
+    def put(self, data_dict):
+
+        if len(self.buffer['state']) >= self.size:
+            for k in self.buffer.keys():
+                self.buffer[k].pop(0)
+
+        for k in data_dict.keys():
+            self.buffer[k].extend(data_dict[k])
+
+        return self.buffer
+
+    def sample(self, num):
+
+        seed = random.randint(0,100)
+        sample = {}
+        for k in self.buffer.keys():
+            random.seed(seed)
+            sample[k] = np.asarray(random.choices(self.buffer[k], k=num))
+        return sample
+
+    def sample_dictionary_of_datasets(self, sampling_size):
+        dataset_dict = self.sample(sampling_size)
+        for k in dataset_dict.keys():
+            dataset_dict[k] = tf.data.Dataset.from_tensor_slices(tf.convert_to_tensor(dataset_dict[k], dtype=tf.float64))
+        return dataset_dict
+
+
+    def sample_dataset(self, sampling_size):
+        data_dict = self.sample(sampling_size)
+        datasets = []
+        for k in data_dict.keys():
+            datasets.append(tf.data.Dataset.from_tensor_slices(data_dict[k]))
+        dataset = tf.data.Dataset.zip(tuple(datasets))
+
+        return dataset, data_dict.keys()
