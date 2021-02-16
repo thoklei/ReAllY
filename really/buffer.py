@@ -42,7 +42,7 @@ class Replay_buffer:
         data_dict = self.sample(sampling_size)
         datasets = []
         for k in data_dict.keys():
-            datasets.append(tf.data.Dataset.from_tensor_slices(data_dict[k]))
+            datasets.append(tf.data.Dataset.from_tensor_slices(tf.convert_to_tensor(data_dict[k]), dtyp=tf.float64))
         dataset = tf.data.Dataset.zip(tuple(datasets))
 
         return dataset, data_dict.keys()

@@ -3,8 +3,12 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import ray
 import tensorflow as tf
+import gym
+import numpy as np
 from really.agent import Agent
 from really.runner_box import RunnerBox
+from really.buffer import Replay_buffer
+from really.agg import Smoothing_aggregator
 
 
 class SampleManager():
@@ -38,6 +42,7 @@ class SampleManager():
         self.total_steps = total_steps
         self.returns = returns
         self.kwargs = kwargs
+        self.buffer = None
 
         # initilize empty dete aggregator
         self.data = {}
@@ -136,6 +141,7 @@ class SampleManager():
             # concatenate dones and not dones
             runner_boxes = dones + runner_boxes
             t += 1
+
         return self.data
 
     # stores results and asserts if we are done
@@ -155,32 +161,57 @@ class SampleManager():
         return not_done
 
 
-    def create_dictionary_of_datasets(self, new=True):
-        if new: self.get_data()
-        dataset_dict = {}
-        for k in self.data.keys():
-            dataset_dict[k] = tf.data.Dataset.from_tensor_slices(self.data[k])
+    def sample_dictionary_of_datasets(self, sample_size, from_buffer=True):
+        # sample from buffer
+        if from_buffer:
+            dataset_dict = self.buffer.sample_dictionary_of_datasets(sample_size)
+
+        # else create new data
+        else:
+            # save old sepcification
+            old_total_steps = self.total_steps
+            # set to sampling size
+            self.total_steps = sample_size
+            self.get_data()
+            dataset_dict = {}
+            for k in self.data.keys():
+                dataset_dict[k] = tf.data.Dataset.from_tensor_slices(self.data[k])
+            # restore old specification
+            self.total_steps = old_total_steps
         return dataset_dict
 
 
-    def create_dataset(self, new=True):
-        if new: self.get_data()
-        datasets = []
-        for k in self.data.keys():
-            datasets.append(tf.data.Dataset.from_tensor_slices(self.data[k]))
-        dataset = tf.data.Dataset.zip(tuple(datasets))
+    def sample_dataset(self, sample_size, from_buffer=True):
+        # sample from boffer
+        if from_buffer:
+            dataset, keys = self.buffer.sample_dataset(sample_size)
+        # else create new data
+        else:
+            # save old specification
+            old_total_steps = self.total_steps
+            # set to sampling size
+            self.total_steps = sample_size
+            self.get_data()
+            datasets = []
+            for k in self.data.keys():
+                datasets.append(tf.data.Dataset.from_tensor_slices(self.data[k]))
+            dataset = tf.data.Dataset.zip(tuple(datasets))
+            keys = self.data.keys()
+            # restore old specification
+            self.total_steps = old_total_steps
 
-
-        return dataset, self.data.keys()
+        return dataset, keys
 
 
     def get_agent(self):
+
         ray.shutdown()
         # surrpressing warnings
         ray.init(log_to_driver=False)
         runner_box = RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=0, returns=self.returns, **self.kwargs)
         agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
         agent = Agent(self.model, **agent_kwargs)
+
         return agent
 
 
@@ -189,3 +220,78 @@ class SampleManager():
 
     def set_temperature(self, temperature):
         self.kwargs['temperature'] = temperature
+
+
+    def initilize_buffer(self, size, optim_keys):
+        self.buffer = Replay_buffer(size, optim_keys)
+
+    def store_in_buffer(self, data_dict):
+        self.buffer.put(data_dict)
+
+    def test(self, test_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False):
+
+        env = gym.make(self.environment_name)
+        agent = self.get_agent()
+
+        return_time = False
+        return_reward = False
+
+        if evaluation_measure == 'time':
+            return_time = True
+            time_steps = []
+        elif evaluation_measure == 'reward':
+            return_reward = True
+            rewards = []
+        elif evaluation_measure == 'time_and_reward':
+            return_time = True
+            return_reward = True
+            time_steps = []
+            rewards = []
+        else: raise f"unrceognized evaluation measure: {evaluation_measure} \n Change to 'time', 'reward' or 'time_and_reward'."
+
+        for _ in range(test_episodes):
+
+            state_new = np.expand_dims(env.reset(), axis=0)
+            if return_reward:
+                reward_per_episode = []
+
+            for t in range(test_steps):
+                if render: env.render()
+                state = state_new
+                action = agent.act(state).numpy()
+                state_new, reward, done, info = env.step(action)
+                state_new = np.expand_dims(state_new, axis=0)
+                if return_reward:
+                    reward_per_episode.append(reward)
+                if done:
+                    if return_time:
+                        time_steps.append(t)
+                    if return_reward:
+                        rewards.append(np.mean(reward_per_episode))
+                    break
+                if (t == test_steps):
+                    if return_time:
+                        time_steps.append(t)
+                    if return_reward:
+                        rewards.append(np.mean(reward_per_episode))
+                    break
+
+        env.close()
+        # this is not pretty but it works
+        if return_time:
+            #avg_time = np.mean(time_steps)
+            if do_print: print(f"Episodes finished after a mean of {np.mean(time_steps)} timesteps")
+            if not return_reward:
+                return time_steps
+        if return_reward:
+            #avg_reward = np.mean(rewards)
+            if do_print: print(f"Episodes finished after a mean of {np.mean(rewards)} accumulated reward")
+            if not return_time:
+                return rewards
+        return time_steps, rewards
+
+    def initialize_aggregator(self, path, saving_after=10, aggregator_keys=['loss']):
+        self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys)
+
+    def update_agg(self, **kwargs):
+        self.agg.update(**kwargs)

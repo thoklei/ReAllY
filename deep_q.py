@@ -1,16 +1,14 @@
 import logging, os
-
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
 import tensorflow as tf
 from tensorflow.keras.models import Model
 import gym
 import random
 import numpy as np
-
+import matplotlib.pyplot as plt
 from really.sample_manager import SampleManager
-from really.buffer import Replay_buffer
+
 
 class DQN(Model):
     def __init__(self, actions):
@@ -45,32 +43,6 @@ def train_step(agent, states, actions, rewards, states_new, terminal):
     return loss
 
 
-def test(test_steps, agent, env, test_episodes = 100, render = False):
-
-    for _ in range(test_episodes):
-        state_new = np.expand_dims(env.reset(), axis=0)
-        time_steps = []
-
-        for t in range(test_steps):
-            if render: env.render()
-            state = state_new
-            action = agent.act(state).numpy()
-            state_new, reward, done, info = env.step(action)
-            state_new = np.expand_dims(state_new, axis=0)
-
-            if done:
-                time_steps.append(t)
-                break
-            if t == test_steps:
-                time_steps.append(t)
-                break
-
-    env.close()
-    avg = np.mean(time_steps)
-    print(f"Episodes finished after a mean of {avg} timesteps")
-    return avg
-
-
 if __name__== "__main__":
     env = gym.make('CartPole-v0')
     state = env.reset()
@@ -95,6 +67,7 @@ if __name__== "__main__":
 
     manager = SampleManager(**kwargs)
 
+    saving_path = os.getcwd()+'/progress'
     buffer_size = 50000
     test_steps = 1000
     epochs = 100
@@ -103,22 +76,21 @@ if __name__== "__main__":
     gamma = 0.95
     optimizer = tf.keras.optimizers.Adam()
     loss_function = tf.keras.losses.MSE
-    moving_average = 0
-    moving_average_steps = 0
-    moving_average_factor = 0.95
-    losses_e = []
-    env_staps = []
+    saving_after = 2
 
     # keys needed for deep q
     optim_keys = ['state', 'action', 'reward', 'state_new', 'terminal']
 
-    buffer = Replay_buffer(buffer_size, optim_keys)
+    # initialize buffer
+    manager.initilize_buffer(buffer_size, optim_keys)
     agent = manager.get_agent()
+
+    # initilize progress aggregator
+    manager.initialize_aggregator(path=saving_path, saving_after=saving_after, aggregator_keys=['loss', 'time_steps'])
 
     # initial testing:
     print('test before training: ')
-    test(test_steps, agent, env)
-
+    manager.test(test_steps, do_print=True)
 
     for e in range(epochs):
         # anneal sampling temperature
@@ -127,43 +99,31 @@ if __name__== "__main__":
 
         print('collecting experience..')
         data = manager.get_data()
-        buffer.put(data)
+        manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        experience_dict = buffer.sample_dictionary_of_datasets(sample_size)
+        experience_dict = manager.sample_dictionary_of_datasets(sample_size)
         # batch datasets
         for k in experience_dict:
             experience_dict[k] = experience_dict[k].batch(optim_batch_size)
 
         print('optimizing...')
-
+        losses = []
         #for t in range(train_steps):
         for states, actions, rewards, states_new, terminals in zip(*[experience_dict[k] for k in optim_keys]):
-            losses = []
             rewards = np.expand_dims(rewards, axis=-1)
             terminals = np.expand_dims(terminals, axis=-1)
-            #print(f'states {states.shape}')
-            #print(f'rewards {rewards.shape}')
-            #print(f'states n {states_new.shape}')
-            #print(f'terminal {terminals.shape}')
             loss = train_step(agent, states, actions, rewards, states_new, terminals)
-            losses.append(loss)
-
+            losses.append(np.mean(loss, axis=0))
         # set new weights, get optimized agent
         manager.set_agent(agent.model.get_weights())
         agent = manager.get_agent()
-
-        moving_average = moving_average_factor * np.mean(losses) + (1-moving_average_factor) * moving_average
-        losses_e.append(moving_average)
-        avg_t = test(test_steps, agent, env)
-        moving_average_steps = moving_average_factor * avg_t + (1-moving_average_factor) * moving_average_steps
-        env_staps.append(moving_average_steps)
-        print(f"epoch ::: {e}  loss ::: {moving_average}   avg env steps ::: {moving_average_steps}"   )
+        # update aggregator
+        time_steps = manager.test(test_steps)
+        manager.update_agg(loss=losses, time_steps=time_steps)
+        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}"   )
 
     print('done')
-    plt.plot(losses_e)
-    plt.plot(env_staps)
-    plt.show()
     print('testing optimized agent')
     manager.set_temperature(1/epochs)
-    test(test_steps, agent, env, render=True)
+    manager.test(test_steps, render=True)

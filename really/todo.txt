@@ -1,23 +1,21 @@
 # big box -> check kwargs
 
-# sampling manager: implement stop when total steps reached x
-# sampling manager: store funciton x
-# sampling manager: create tf dataset x
-
 # deep q tune hyperparameters
+
+
+# max env steps everywhere
 
 # grid world agent
 
 # doku !!
 # test script as example of all funcionalities
 
-# move test to sampling manager
 
 # prepar a2c
 
 # absolute imports ? module structure
 
-# typecasting for all dataset creations
+
 
 FANCY:
 - print info
