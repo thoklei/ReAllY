@@ -1,10 +1,25 @@
 import numpy as np
 from really.agg import Smoothing_aggregator
 import os
+import gridworlds
+import gym
+import random
 
-path = os.getcwd()+"/progress"
-
-agg = Smoothing_aggregator(path=path, saving_after=10, aggregator_keys=['loss', 'reward'])
-
-for i in range(1000):
-    agg.update(loss=[np.random.rand(100) for _ in range(2)], reward=np.random.rand(100))
+env = gym.make('gridworld-v0')
+env.reset()
+a = [1,1,1,1,2,2,2,2,2]*30
+done = False
+while not(done):
+    #print(i)
+    action = random.randint(0,3)
+    #rint(action)
+    state, reward, done, info = env.step(action)
+    env.render()
+    print('reward', reward)
+    if done:
+        print('done')
+        break
+#for i in range(10):
+#    state, reward, done, info = env.step(i)
+#    env.render()
+#    print('reward', reward)

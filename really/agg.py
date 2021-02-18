@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os, logging
+# only print error messages
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class Smoothing_aggregator:
 
@@ -49,7 +52,7 @@ class Smoothing_aggregator:
 
         keys = list(self.aggregator_vals.keys())
         number_of_subplots = len(keys)
-
+        plt.clf()
         plt.suptitle(f'training process after {self.epoch} training epochs')
         for i,v in enumerate(range(number_of_subplots)):
             v+=1

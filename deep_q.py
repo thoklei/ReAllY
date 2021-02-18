@@ -57,7 +57,7 @@ if __name__== "__main__":
         'model' : DQN,
         'environment_name' :'CartPole-v0',
         'num_parallel' :10,
-        'total_steps' :10000,
+        'total_steps' :1000,
         'action_sampling_type' :'thompson',
         'output_shape' : num_actions,
         'weights' : weights,
@@ -67,11 +67,11 @@ if __name__== "__main__":
 
     manager = SampleManager(**kwargs)
 
-    saving_path = os.getcwd()+'/progress'
+    saving_path = os.getcwd()+'/progress_deep_q'
     buffer_size = 50000
     test_steps = 1000
     epochs = 100
-    sample_size = int(0.05*buffer_size)
+    sample_size = 1000
     optim_batch_size = 64
     gamma = 0.95
     optimizer = tf.keras.optimizers.Adam()
@@ -99,6 +99,7 @@ if __name__== "__main__":
 
         print('collecting experience..')
         data = manager.get_data()
+        #print(data['terminal'])
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer

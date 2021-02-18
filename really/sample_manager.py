@@ -1,8 +1,9 @@
-import os
+import os, logging
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import ray
 import tensorflow as tf
+import gridworlds
 import gym
 import numpy as np
 from really.agent import Agent
@@ -15,7 +16,7 @@ class SampleManager():
 
     """
     model: model Object
-    environment_name: string specifying gym environment
+    environment: string specifying gym environment
     num_parallel: int, number of how many agents to run in parall
     total_steps: int, size of the total steps collected
     returns: list of strings specifying what is to be returned by the box
@@ -28,21 +29,33 @@ class SampleManager():
         temperature: float, temperature for thomson sampling, defaults to 1
         epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
         weights: weights of the model, not needed if input_shape is given
-        needs_output_shape: True, boolean specifying if the number of actions needs to be passed on to the model for first initialization
+        model_kwargs: dict, optional model initialization specifications
+        input_shape: shape or False, shape needed for first call of model
         remote_min_returns: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
         remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
+        env_config: dict, containing a string (gym env name) and a class(if custom environment) or None(if stand)
     """
 
-    def __init__(self, model, environment_name, num_parallel, total_steps, returns=[], **kwargs):
+    def __init__(self, model, environment, num_parallel, total_steps, returns=[], **kwargs):
 
 
         self.model = model
-        self.environment_name = environment_name
+        self.environment = environment
         self.num_parallel = num_parallel
         self.total_steps = total_steps
         self.returns = returns
         self.kwargs = kwargs
         self.buffer = None
+
+
+        if isinstance(self.environment, str):
+            self.env_instance = gym.make(self.environment)
+        else:
+            env_kwargs = {}
+            if 'env_kwargs' in kwargs.keys():
+                env_kwargs = kwargs['env_kwargs']
+                self.kwargs.pop('env_kwargs')
+            self.env_instance = self.env_creator(self.environment, **env_kwargs)
 
         # initilize empty dete aggregator
         self.data = {}
@@ -110,10 +123,11 @@ class SampleManager():
         ray.shutdown()
         # surrpressing warnings
         ray.init(log_to_driver=False)
+        #ray.init()
 
         not_done = True
         # create list of runnor boxes
-        runner_boxes = [RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=i, returns=self.returns, **self.kwargs) for i in range(self.num_parallel)]
+        runner_boxes = [RunnerBox.remote(Agent, self.model, self.environment, runner_position=i, returns=self.returns, **self.kwargs) for i in range(self.num_parallel)]
         # as long as not yet reached number of total steps
         t = 0
         while not_done:
@@ -180,6 +194,23 @@ class SampleManager():
             self.total_steps = old_total_steps
         return dataset_dict
 
+    def sample_dictionary(self, sample_size, from_buffer=True):
+        # sample from buffer
+        if from_buffer:
+            dict = self.buffer.sample(sample_size)
+        else:
+            # save old sepcification
+            old_total_steps = self.total_steps
+            # set to sampling size
+            self.total_steps = sample_size
+            self.get_data()
+            dict = self.data
+            # restore old specification
+            self.total_steps = old_total_steps
+        return dict
+
+
+
 
     def sample_dataset(self, sample_size, from_buffer=True):
         # sample from boffer
@@ -208,7 +239,7 @@ class SampleManager():
         ray.shutdown()
         # surrpressing warnings
         ray.init(log_to_driver=False)
-        runner_box = RunnerBox.remote(Agent, self.model, self.environment_name, runner_position=0, returns=self.returns, **self.kwargs)
+        runner_box = RunnerBox.remote(Agent, self.model, self.environment, runner_position=0, returns=self.returns, **self.kwargs)
         agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
         agent = Agent(self.model, **agent_kwargs)
 
@@ -230,7 +261,7 @@ class SampleManager():
 
     def test(self, test_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False):
 
-        env = gym.make(self.environment_name)
+        env = self.env_instance
         agent = self.get_agent()
 
         return_time = False
@@ -249,7 +280,7 @@ class SampleManager():
             rewards = []
         else: raise f"unrceognized evaluation measure: {evaluation_measure} \n Change to 'time', 'reward' or 'time_and_reward'."
 
-        for _ in range(test_episodes):
+        for e in range(test_episodes):
 
             state_new = np.expand_dims(env.reset(), axis=0)
             if return_reward:
@@ -258,8 +289,10 @@ class SampleManager():
             for t in range(test_steps):
                 if render: env.render()
                 state = state_new
-                action = agent.act(state).numpy()
-                state_new, reward, done, info = env.step(action)
+                action = agent.act(state)
+                if tf.is_tensor(action):
+                    logits=action.numpy()
+                state_new, reward, done, info = env.step(int(action))
                 state_new = np.expand_dims(state_new, axis=0)
                 if return_reward:
                     reward_per_episode.append(reward)
@@ -269,7 +302,7 @@ class SampleManager():
                     if return_reward:
                         rewards.append(np.mean(reward_per_episode))
                     break
-                if (t == test_steps):
+                if (t == test_steps-1):
                     if return_time:
                         time_steps.append(t)
                     if return_reward:
@@ -295,3 +328,7 @@ class SampleManager():
 
     def update_agg(self, **kwargs):
         self.agg.update(**kwargs)
+
+
+    def env_creator(self, object, **kwargs):
+        return object(**kwargs)

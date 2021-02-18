@@ -1,12 +1,20 @@
-import os
+import os, logging
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 import numpy as np
+import gridworlds
 import gym
 import ray
 from really.utils import discount_cumsum
+from ray.tune.registry import register_env
 
+
+
+def env_creator(dict):
+    return GridWorld()  # return an env instance
+
+#
 @ray.remote
 class RunnerBox():
     """
@@ -14,8 +22,8 @@ class RunnerBox():
 
     @args:
         agent: Agent Object
-        model: ANN Model object
-        environment_name: string specifying gym environment
+        model: callable Model object
+        environment: string specifying gym environment or class of Custom (gym-like) environment
         runner_position: int, index an list of remote runners
         returns: list of strings specifying what is to be returned by the box
                 supported are: 'value_estimate', 'log_prob', 'monte_carlo'
@@ -25,16 +33,28 @@ class RunnerBox():
                 temperature: float, temperature for thomson sampling, defaults to 1
                 epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
                 weights: weights of the model, not needed if input_shape is given
-                output_shape: optional, specifying output size of model
+                model_kwargs: dict, optional, model specificatins requried for initialization
                 gamma: float, discount factor for monte carlo return, defaults to 0.99
+                env_kwargs: dictionary, optional custom environment specifications
+                input_shape: boolean, if model needs input shape for initial call, defaults to True
             """
 
-    def __init__(self, agent, model, environment_name, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
+    def __init__(self, agent, model, environment, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
 
-        self.env = gym.make(environment_name)
-        state = self.env.reset()
-        state = np.expand_dims(state, axis=0)
-        kwargs['input_shape'] = state.shape
+
+        if isinstance(environment, str):
+            self.env = gym.make(environment)
+        else:
+            env_kwargs = {}
+            if 'env_kwargs' in kwargs.keys():
+                env_kwargs = kwargs['env_kwargs']
+            self.env = self.env_creator(environment, **env_kwargs)
+
+
+        if not(kwargs['input_shape']==False):
+            state = self.env.reset()
+            state = np.expand_dims(state, axis=0)
+            kwargs['input_shape'] = state.shape
         self.agent_kwargs = kwargs
         self.agent = agent(model, **kwargs)
         self.runner_position = runner_position
@@ -43,6 +63,8 @@ class RunnerBox():
         self.return_log_prob = False
         self.return_value_estimate = False
         self.return_monte_carlo = False
+
+        logging.basicConfig(filename=f'logging/box{self.runner_position}.log', level=logging.DEBUG)
 
         # initialize default data agg
         data_agg = {}
@@ -86,15 +108,18 @@ class RunnerBox():
                 # S
                 self.data_agg['state'].append(state)
                 # A
-                new_state, reward, done, info = self.env.step(agent_out['action'].numpy())
-                self.data_agg['action'].append(agent_out['action'].numpy())
+                action = agent_out['action']
+                if tf.is_tensor(action):
+                    action = action.numpy()
+                new_state, reward, done, info = self.env.step(int(action))
+                self.data_agg['action'].append(action)
                 # R
                 self.data_agg['reward'].append(reward)
                 # S+1
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['terminal'].append(float(int(done)))
+                self.data_agg['terminal'].append(float(int(not(done))))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
@@ -117,19 +142,22 @@ class RunnerBox():
             while not done:
                 state = new_state
                 agent_out = self.agent.act_experience(state, self.return_log_prob)
-
                 # S
                 self.data_agg['state'].append(state)
                 # A
-                new_state, reward, done, info = self.env.step(agent_out['action'].numpy())
-                self.data_agg['action'].append(agent_out['action'].numpy())
+                action = agent_out['action']
+                if tf.is_tensor(action):
+                    action = action.numpy()
+                # A
+                new_state, reward, done, info = self.env.step(int(action))
+                self.data_agg['action'].append(action)
                 # R
                 self.data_agg['reward'].append(reward)
                 # S+1
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['terminal'].append(int(done))
+                self.data_agg['terminal'].append(int(not(done)))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
@@ -142,3 +170,6 @@ class RunnerBox():
     def get_agent_kwargs(self):
         agent_kwargs = self.agent_kwargs
         return agent_kwargs
+
+    def env_creator(self, object, **kwargs):
+        return object(**kwargs)

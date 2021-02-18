@@ -2,21 +2,23 @@
 
 # deep q tune hyperparameters
 
-
 # max env steps everywhere
 
-# grid world agent
+# tab q batchify
 
 # doku !!
 # test script as example of all funcionalities
 
+# terminals = not done
+# output dict mit expl. keys
 
 # prepar a2c
 
 # absolute imports ? module structure
-
+# saving and loading model
 
 
 FANCY:
 - print info
-- print progress for data agg
+- progress bar over epochs
+- colour list for aggregator

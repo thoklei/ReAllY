@@ -1,2 +1,7 @@
 deep_q.py
 progress
+progress_deep_q
+progress_tabq
+grid_q.py
+*.log
+gym_gridworld
