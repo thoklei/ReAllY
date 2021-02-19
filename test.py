@@ -4,7 +4,9 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import numpy as np
 import gym
+import ray
 from really import SampleManager
+from really.utils import dict_to_dict_of_datasets
 
 
 class MyModel(tf.keras.Model):
@@ -52,13 +54,15 @@ if __name__== "__main__":
 
     kwargs = {
         'model' : MyModel,
-        'environment_name' :'CartPole-v0',
+        'environment' :'CartPole-v0',
         'num_parallel' :5,
         'total_steps' :100,
         'action_sampling_type' :'thompson',
         'num_episodes': 20,
 
     }
+
+    ray.init(log_to_driver=False)
 
     manager = SampleManager(**kwargs)
     saving_path = os.getcwd()+'/progress_test'
@@ -68,9 +72,6 @@ if __name__== "__main__":
     epochs = 10
     sample_size = 10
     optim_batch_size = 8
-    gamma = 0.95
-    optimizer = tf.keras.optimizers.Adam()
-    loss_function = tf.keras.losses.MSE
     saving_after = 2
 
     # keys for replay buffer -> what you will need for optimization
@@ -97,11 +98,9 @@ if __name__== "__main__":
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        experience_dict = manager.sample_dictionary_of_datasets(sample_size)
-        # batch datasets
-        for k in experience_dict:
-            experience_dict[k] = experience_dict[k].batch(optim_batch_size)
-
+        sample_dict = manager.sample(sample_size)
+        # create and batch datasets
+        data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print('optimizing...')
 
@@ -112,6 +111,7 @@ if __name__== "__main__":
         dummy_losses = [np.random.rand(10) for _ in range(10)]
 
         new_weights = agent.model.get_weights()
+
         # set new weights
         manager.set_agent(new_weights)
         # get new weights
