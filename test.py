@@ -1,13 +1,10 @@
-
 import logging, os
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 import numpy as np
 import gym
-
-from really.sample_manager import SampleManager
-
+from really import SampleManager
 
 
 class MyModel(tf.keras.Model):
@@ -26,6 +23,7 @@ class MyModel(tf.keras.Model):
         output['output'] = x
         output['value_estimate'] = v
         return output
+
 
 class ModelContunous(tf.keras.Model):
 

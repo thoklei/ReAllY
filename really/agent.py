@@ -43,6 +43,9 @@ class Agent():
     def set_weights(self, weights):
         self.model.set_weights(weights)
 
+    def get_weights(self):
+        return self.model.get_weights()
+
     def initialize_weights(self, model, input_shape):
         if not(input_shape):
             return model.get_weights()
@@ -61,13 +64,12 @@ class Agent():
         network_out = self.model(state)
 
         if self.action_sampling_type == 'epsilon_greedy':
+            logging.debug(f'epsilon_greedy with {self.epsilon}')
             logits = network_out['output']
-            logging.warning(f'{logits} {logits.shape} logits')
             if tf.is_tensor(logits):
                 logits= logits.numpy()
-            if random.random() > self.epsilon:
+            if random.random() < self.epsilon:
                 action = np.argmax(logits, axis=-1)
-                logging.warning(f'epsi greedy max {action}')
                 # log prob of epsilon
                 if return_log_prob: output['log_probability'] = np.asarray([np.log(self.epsilon)]*logits.shape[0])
 
@@ -75,12 +77,11 @@ class Agent():
                 # log prob of 1-epsilon
                 action = [random.randrange(logits.shape[-1]) for _ in range(logits.shape[0])]
                 action = np.asarray(action)
-                logging.warning(f'random action {action}')
                 if return_log_prob: output['log_probability'] = np.asarray([np.log(1-self.epsilon)]*logits.shape[0])
             output['action'] = action
 
 
-        if self.action_sampling_type == 'thompson':
+        elif self.action_sampling_type == 'thompson':
             # q values
             logits = network_out['output']
             if tf.is_tensor(logits):
@@ -90,14 +91,16 @@ class Agent():
             output['action'] = action
             if return_log_prob: output['log_probability'] = np.log([probs[i][a] for i,a in zip(range(probs.shape[0]), action)])
 
-        if self.action_sampling_type == 'continous_normal_diagonal':
+        elif self.action_sampling_type == 'continous_normal_diagonal':
 
             mus, sigmas = network_out['mu'].numpy(), network_out['sigma'].numpy()
             action = norm.rvs(mus, sigmas)
             output['action'] = action
 
             if return_log_prob: output['log_probability'] = np.sum(norm.logpdf(action, mus, sigmas))
-
+        else:
+            logging.warning(f'unsupported sampling method {self.actin_sampling_type}')
+            raise NotImplemented
         # pass on value estimate if there
         if self.value_estimate :
             output['value_estimate'] = network_out['value_estimate']
@@ -105,13 +108,10 @@ class Agent():
         return output
 
     def act(self, state):
-        logging.debug(f'state: {state}')
         net_out = self.act_experience(state)
-        logging.warning(net_out)
         return net_out['action']
 
     def max_q(self, x):
-        #print('max q x', x.shape)
         # computes the maximum q-value along each batch dimension
         model_out = self.model(x)
         x = tf.reduce_max(model_out['output'], axis=-1)
@@ -122,12 +122,3 @@ class Agent():
         model_out = self.model(x)
         x = tf.gather(model_out['output'], tf.cast(actions, dtype=tf.int32), batch_dims=0)
         return x
-
-
-
-
-
-
-# env
-# small box
-# big box

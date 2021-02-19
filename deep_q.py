@@ -6,17 +6,19 @@ from tensorflow.keras.models import Model
 import gym
 import random
 import numpy as np
+import ray
 import matplotlib.pyplot as plt
-from really.sample_manager import SampleManager
+from really import SampleManager
+from really.utils import dict_to_dict_of_datasets
 
 
 class DQN(Model):
     def __init__(self, actions):
         super(DQN, self).__init__()
-        self.in_layer = tf.keras.layers.Dense(16, activation=tf.nn.relu)
-        self.hidden_1 = tf.keras.layers.Dense(16, activation=tf.nn.relu)
-        self.hidden_2 = tf.keras.layers.Dense(16, activation=tf.nn.relu)
-        self.out = tf.keras.layers.Dense(actions)
+        self.in_layer = tf.keras.layers.Dense(16, activation=tf.nn.tanh)
+        self.hidden_1 = tf.keras.layers.Dense(16, activation=tf.nn.tanh)
+        self.hidden_2 = tf.keras.layers.Dense(16, activation=tf.nn.tanh)
+        self.out = tf.keras.layers.Dense(actions, use_bias=False)
 
     def call(self, x):
         output = {}
@@ -28,7 +30,7 @@ class DQN(Model):
         return output
 
 
-def train_step(agent, states, actions, rewards, states_new, terminal):
+def train_step(optimizer, agent, states, actions, rewards, states_new, terminal):
 
     max_qs = agent.max_q(states_new)
     targets = rewards + terminal * gamma * max_qs
@@ -44,6 +46,7 @@ def train_step(agent, states, actions, rewards, states_new, terminal):
 
 
 if __name__== "__main__":
+    ray.init(log_to_driver=False)
     env = gym.make('CartPole-v0')
     state = env.reset()
     state = np.expand_dims(state, axis=0)
@@ -53,15 +56,20 @@ if __name__== "__main__":
     model(tf.ones(input_shape))
     weights = model.get_weights()
 
+    model_kwargs = {
+        'actions' : num_actions
+    }
+
     kwargs = {
         'model' : DQN,
-        'environment_name' :'CartPole-v0',
-        'num_parallel' :10,
-        'total_steps' :1000,
-        'action_sampling_type' :'thompson',
-        'output_shape' : num_actions,
+        'model_kwargs': model_kwargs,
+        'environment' :'CartPole-v0',
+        'num_parallel' :8,
+        'total_steps' :800,
+        'action_sampling_type' :'epsilon_greedy',
         'weights' : weights,
         'num_episodes': 20,
+        'epsilon' : 0.85
 
     }
 
@@ -69,11 +77,11 @@ if __name__== "__main__":
 
     saving_path = os.getcwd()+'/progress_deep_q'
     buffer_size = 50000
-    test_steps = 1000
+    test_steps = 100
     epochs = 100
-    sample_size = 1000
+    sample_size = 16000
     optim_batch_size = 64
-    gamma = 0.95
+    gamma = 0.85
     optimizer = tf.keras.optimizers.Adam()
     loss_function = tf.keras.losses.MSE
     saving_after = 2
@@ -101,20 +109,19 @@ if __name__== "__main__":
         data = manager.get_data()
         #print(data['terminal'])
         manager.store_in_buffer(data)
-
-        # sample data to optimize on from buffer
-        experience_dict = manager.sample_dictionary_of_datasets(sample_size)
-        # batch datasets
-        for k in experience_dict:
-            experience_dict[k] = experience_dict[k].batch(optim_batch_size)
+        # sample from buffer
+        sample_dict = manager.sample(sample_size)
+        # create dict of tf datasets
+        dataset_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print('optimizing...')
         losses = []
         #for t in range(train_steps):
-        for states, actions, rewards, states_new, terminals in zip(*[experience_dict[k] for k in optim_keys]):
+        for states, actions, rewards, states_new, terminals in zip(*[dataset_dict[k] for k in optim_keys]):
             rewards = np.expand_dims(rewards, axis=-1)
             terminals = np.expand_dims(terminals, axis=-1)
-            loss = train_step(agent, states, actions, rewards, states_new, terminals)
+            loss = train_step(optimizer, agent, states, actions, rewards, states_new, terminals)
+            #print(f'loss: {loss}')
             losses.append(np.mean(loss, axis=0))
         # set new weights, get optimized agent
         manager.set_agent(agent.model.get_weights())
@@ -122,9 +129,8 @@ if __name__== "__main__":
         # update aggregator
         time_steps = manager.test(test_steps)
         manager.update_agg(loss=losses, time_steps=time_steps)
-        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}"   )
+        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}")
 
     print('done')
     print('testing optimized agent')
-    manager.set_temperature(1/epochs)
     manager.test(test_steps, render=True)

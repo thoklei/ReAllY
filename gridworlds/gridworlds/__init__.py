@@ -1,4 +1,5 @@
 from gym.envs.registration import register
+from gridworlds.envs.gridworld import GridWorld
 
 register(
     id='gridworld-v0',

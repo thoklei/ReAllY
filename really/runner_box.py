@@ -1,7 +1,7 @@
 import os, logging
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import tensorflow as tf
+
 import numpy as np
 import gridworlds
 import gym
@@ -35,28 +35,21 @@ class RunnerBox():
                 weights: weights of the model, not needed if input_shape is given
                 model_kwargs: dict, optional, model specificatins requried for initialization
                 gamma: float, discount factor for monte carlo return, defaults to 0.99
-                env_kwargs: dictionary, optional custom environment specifications
+                $env_kwargs: dictionary, optional custom environment specifications
                 input_shape: boolean, if model needs input shape for initial call, defaults to True
             """
 
     def __init__(self, agent, model, environment, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
 
-
-        if isinstance(environment, str):
-            self.env = gym.make(environment)
-        else:
-            env_kwargs = {}
-            if 'env_kwargs' in kwargs.keys():
-                env_kwargs = kwargs['env_kwargs']
-            self.env = self.env_creator(environment, **env_kwargs)
-
-
-        if not(kwargs['input_shape']==False):
+        self.env = environment
+        # if input shape is not set or nod needed, set to state shape fo model initialization
+        if not('input_shape' in kwargs):
             state = self.env.reset()
             state = np.expand_dims(state, axis=0)
             kwargs['input_shape'] = state.shape
-        self.agent_kwargs = kwargs
+
         self.agent = agent(model, **kwargs)
+        self.agent_kwargs = kwargs
         self.runner_position = runner_position
         self.returns = returns
 
@@ -93,7 +86,8 @@ class RunnerBox():
 
     #@ray.remote(num_returns=2)
     def run_n_steps(self, num_steps, max_env=None):
-
+        import tensorflow as tf
+        
         if max_env is not None: self.env.__num_steps = max_env
         state = self.env.reset()
         step = 0
@@ -134,6 +128,7 @@ class RunnerBox():
 
     #@ray.remote(num_returns=2)
     def run_n_episodes(self, num_episodes, max_env = None):
+        import tensorflow as tf
         if max_env is not None: self.env.__num_steps = max_env
         state = self.env.reset()
         for e in range(num_episodes):

@@ -1,5 +1,5 @@
 import numpy as np
-from really.agg import Smoothing_aggregator
+from really import SampleManager
 import os
 import gridworlds
 import gym
@@ -7,7 +7,7 @@ import random
 
 env = gym.make('gridworld-v0')
 env.reset()
-a = [1,1,1,1,2,2,2,2,2]*30
+a = [1,1,1,1,2,2,2,2,2]
 done = False
 while not(done):
     #print(i)

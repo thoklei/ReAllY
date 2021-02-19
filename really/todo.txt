@@ -4,7 +4,7 @@
 
 # max env steps everywhere
 
-# tab q batchify
+# test set epsilon to 1, temperature to 0.001
 
 # doku !!
 # test script as example of all funcionalities
@@ -14,7 +14,6 @@
 
 # prepar a2c
 
-# absolute imports ? module structure
 # saving and loading model
 
 
