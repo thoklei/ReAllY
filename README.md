@@ -66,7 +66,8 @@ The sample manager should be initalized from the main process.
         remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
  
 ##### Example:
-kwargs = {
+
+    kwargs = {
         'model' : MyModel,
         'environment' :'CartPole-v0',
         'num_parallel' :5,
@@ -78,7 +79,8 @@ kwargs = {
         'temperature' : 0.5,
         'num_episodes': 20
     }
-manager = SampleManager(**kwargs)
+
+    manager = SampleManager(**kwargs)
 
 #### Methods
 
