@@ -83,4 +83,48 @@ The sample manager should be initalized from the main process.
     manager = SampleManager(**kwargs)
 
 #### Methods
+    manager.get_data()
+        returns: dictionary with remoteley collected data according to the managers specifications
+
+    manager.initilize_buffer(buffer_size, optim_keys=['state', 'action', 'reward', 'state_new', 'terminal'])
+        args: 
+            buffer_size: [int] size of the buffer
+        kwargs:
+            optim_keys: [list of strings] specifies the data to be stored in the buffer
+         -> the buffer is a dictonary with a list for each of its keys with a max len of buffer_size
+        
+     manager.store_in_buffer(data)
+        args:
+            data: [dict] dict with list/np arrays/or tensors for each key
+        -> when adding the new data leads to overstepping the buffer size, the data is handled according to the FIFO principle
+        
+     manager.sample(sample_size, from_buffer=True)
+        args:
+            sample_size: [int] how many samples to draw
+         kwargs: 
+            from_buffer: [boolean] if True samples are randomly drawn from the buffer, else new samples are created using the remote runners and the current agent
+     
+     manager.get_agent()
+      -> returns the current agent, an agent has the methods:
+            agent.act(state)
+            agent.max_q(state)
+            agent.q_val(state, action)
+            agent.get_weights()
+            agent.set_weights(weights)
+            
+     manager.set_agent(weights)
+        -> updates the current agents weights
+    
+    manager.save_model(path, epoch, model_name='model')
+        -> creates a folder in the folder specified by 'path' where the current model is saved using tensorflows model.save (only supported for tf models currently!)
+        
+     manager.load_model(path)
+        -> loads the most recent model in the folder specified by path using tf.keras.models.load_model()
+        returns: agent with loaded weights
+        
+      manager
+    
+   
+    
+    
 
