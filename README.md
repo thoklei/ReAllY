@@ -33,12 +33,17 @@ The sample manager should be initalized from the main process.
 
 #### Args
 
-  **model**: callable model Object which needs to have the methods 'load_weights()' and 'set_weights()'
-    **environment**: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
-    **num_parallel**: int, number of how many agents to run in parall (should correspond to machines cpu cores)
-    **total_steps**: int, size of the total steps collected
-    **returns**: list of strings specifying what is to be returned by the box, supported are: 'value_estimate', 'log_prob', 'monte_carlo'
-    **actin_sampling_type**: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+ **model**: callable model Object which needs to have the methods 'load_weights()' and 'set_weights()'
+  
+  **environment**: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
+  
+  **num_parallel**: int, number of how many agents to run in parall (should correspond to machines cpu cores)
+  
+  **total_steps**: int, size of the total steps collected
+  
+  **returns**: list of strings specifying what is to be returned by the box, supported are: 'value_estimate', 'log_prob', 'monte_carlo'
+  
+  **actin_sampling_type**: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
 
 
 #### kwargs:
