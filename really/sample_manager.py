@@ -1,4 +1,6 @@
 import os, logging
+from datetime import datetime
+import glob
 # only print error messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import ray
@@ -10,6 +12,7 @@ from really.agent import Agent
 from really.runner_box import RunnerBox
 from really.buffer import Replay_buffer
 from really.agg import Smoothing_aggregator
+from really.utils import all_subdirs_of
 
 
 class SampleManager():
@@ -125,7 +128,11 @@ class SampleManager():
 
 
 
-    def get_data(self, do_print=False):
+    def get_data(self, do_print=False, total_steps=None):
+
+        if total_steps is not None:
+            old_steps = self.total_steps
+            self.total_steps = total_steps
 
         not_done = True
         # create list of runnor boxes
@@ -157,6 +164,9 @@ class SampleManager():
             # concatenate dones and not dones
             runner_boxes = dones + runner_boxes
             t += 1
+
+        if total_steps is not None:
+            self.total_steps = old_steps
 
         return self.data
 
@@ -198,7 +208,7 @@ class SampleManager():
         if test:
             old_e = self.kwargs['epsilon']
             old_t = self.kwargs['temperature']
-            self.kwargs['epsilon'] = 1
+            self.kwargs['epsilon'] = 0
             self.kwargs['temperature'] = 0.0001
 
         # get agent specifications from runner box
@@ -219,6 +229,9 @@ class SampleManager():
     def set_temperature(self, temperature):
         self.kwargs['temperature'] = temperature
 
+    def set_epsilon(self, epsilon):
+        self.kwargs['epsilon'] = epsilon
+
     def initilize_buffer(self, size, optim_keys):
         self.buffer = Replay_buffer(size, optim_keys)
 
@@ -229,7 +242,7 @@ class SampleManager():
 
         env = self.env_instance
         agent = self.get_agent(test=True)
-        agent.epsilon = 1
+        #agent.epsilon = 1
 
         # get evaluation specs
         return_time = False
@@ -302,3 +315,22 @@ class SampleManager():
 
     def env_creator(self, object, **kwargs):
         return object(**kwargs)
+
+    def save_model(self, path, epoch, model_name='model', create_dir=True):
+        time_stamp = datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p")
+        full_path = f"{path}/{model_name}_{epoch}_{time_stamp}"
+        agent = self.get_agent()
+        print('saving model...')
+        agent.model.save(full_path)
+
+    def load_model(self, path):
+        # alweys leads the latest model
+        subdirs = all_subdirs_of(path)
+        latest_subdir = max(subdirs, key=os.path.getmtime)
+        print(latest_subdir)
+        print('loading model...')
+        model = tf.keras.models.load_model(latest_subdir)
+        weights = model.get_weights()
+        self.set_agent(weights)
+        agent = self.get_agent()
+        return agent

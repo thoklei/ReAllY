@@ -1,5 +1,6 @@
 from scipy import signal
 import tensorflow as tf
+import os
 
 def discount_cumsum(x, discount):
     """
@@ -37,3 +38,10 @@ def dict_to_dict_of_datasets(data_dict, batch_size=None):
             dataset_dict[k] = dataset_dict[k].batch(batch_size)
 
     return dataset_dict
+
+def all_subdirs_of(b='.'):
+    result = []
+    for d in os.listdir(b):
+        bd = os.path.join(b, d)
+        if os.path.isdir(bd): result.append(bd)
+    return result

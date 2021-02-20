@@ -1,7 +1,12 @@
 deep_q.py
 deep_q_remote.py
+deep_q_target.py
+deep_q_target_cycle.py
+test_fun.py
 progress
 progress_deep_q
+progress_deep_q_target
+progress_deep_q_target_cycle
 progress_tabq
 grid_q.py
 *.log

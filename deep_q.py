@@ -26,7 +26,7 @@ class DQN(Model):
         x = self.hidden_1(x)
         x = self.hidden_2(x)
         x = self.out(x)
-        output['output'] = x
+        output['q_values'] = x
         return output
 
 
@@ -47,7 +47,7 @@ def train_step(optimizer, agent, states, actions, rewards, states_new, terminal)
 
 if __name__== "__main__":
     ray.init(log_to_driver=False)
-    env = gym.make('CartPole-v0')
+    env = gym.make('LunarLander-v2')
     state = env.reset()
     state = np.expand_dims(state, axis=0)
     input_shape = state.shape
@@ -60,12 +60,14 @@ if __name__== "__main__":
         'actions' : num_actions
     }
 
+    epsilon = 1
+    epsilo_decay_factor = 0.99
     kwargs = {
         'model' : DQN,
         'model_kwargs': model_kwargs,
-        'environment' :'CartPole-v0',
+        'environment' :'LunarLander-v2',
         'num_parallel' :8,
-        'total_steps' :800,
+        'total_steps' : 400,
         'action_sampling_type' :'epsilon_greedy',
         'weights' : weights,
         'num_episodes': 20,
@@ -73,18 +75,19 @@ if __name__== "__main__":
 
     }
 
+
     manager = SampleManager(**kwargs)
 
     saving_path = os.getcwd()+'/progress_deep_q'
-    buffer_size = 50000
+    buffer_size = 30000
     test_steps = 100
-    epochs = 100
-    sample_size = 16000
+    epochs = 1000
+    sample_size = 4000
     optim_batch_size = 64
     gamma = 0.85
-    optimizer = tf.keras.optimizers.Adam()
+    optimizer = tf.keras.optimizers.Adam(lr=0.0001)
     loss_function = tf.keras.losses.MSE
-    saving_after = 2
+    saving_after = 20
 
     # keys needed for deep q
     optim_keys = ['state', 'action', 'reward', 'state_new', 'terminal']
@@ -94,16 +97,19 @@ if __name__== "__main__":
     agent = manager.get_agent()
 
     # initilize progress aggregator
-    manager.initialize_aggregator(path=saving_path, saving_after=saving_after, aggregator_keys=['loss', 'time_steps'])
-
+    manager.initialize_aggregator(path=saving_path, saving_after=saving_after, aggregator_keys=['loss', 'time_steps', 'rewards'])
+    # fill buffer
+    data = manager.get_data(total_steps=buffer_size)
+    #print(data['terminal'])
+    manager.store_in_buffer(data)
     # initial testing:
     print('test before training: ')
-    manager.test(test_steps, do_print=True)
+    manager.test(test_steps, do_print=True, evaluation_measure='time_and_reward')
 
     for e in range(epochs):
         # anneal sampling temperature
-        temperature = 1/(1+(e/20))
-        manager.set_temperature(temperature)
+        epsilon = max(epsilon * epsilo_decay_factor,0.05)
+        manager.set_epsilon(epsilon)
 
         print('collecting experience..')
         data = manager.get_data()
@@ -127,9 +133,12 @@ if __name__== "__main__":
         manager.set_agent(agent.model.get_weights())
         agent = manager.get_agent()
         # update aggregator
-        time_steps = manager.test(test_steps)
-        manager.update_agg(loss=losses, time_steps=time_steps)
-        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}")
+        time_steps, reward_agg = manager.test(test_steps, evaluation_measure='time_and_reward')
+        manager.update_agg(loss=losses, time_steps=time_steps, rewards=reward_agg)
+        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}   avg agg reward ::: {np.mean(reward_agg)}")
+        if e%saving_after==0:
+            manager.save_model(saving_path, e)
+            manager.test(test_steps, test_episodes=10, render=True, evaluation_measure='time_and_reward')
 
     print('done')
     print('testing optimized agent')

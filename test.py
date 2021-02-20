@@ -22,7 +22,7 @@ class MyModel(tf.keras.Model):
         output = {}
         x = self.layer(x_in)
         v = self.layer2(x)
-        output['output'] = x
+        output['q_values'] = x
         output['value_estimate'] = v
         return output
 
@@ -79,7 +79,8 @@ if __name__== "__main__":
 
     # initialize buffer
     manager.initilize_buffer(buffer_size, optim_keys)
-    agent = manager.get_agent()
+    #agent = manager.get_agent()
+    agent = manager.load_model(path=saving_path)
 
     # initilize progress aggregator
     manager.initialize_aggregator(path=saving_path, saving_after=saving_after, aggregator_keys=['loss', 'time_steps'])
@@ -116,6 +117,7 @@ if __name__== "__main__":
         manager.set_agent(new_weights)
         # get new weights
         agent = manager.get_agent()
+        manager.save_model(saving_path, e)
         # update aggregator
         time_steps = manager.test(test_steps)
         manager.update_agg(loss=dummy_losses, time_steps=time_steps)

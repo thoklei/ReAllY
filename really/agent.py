@@ -11,7 +11,7 @@ class Agent():
     """
     Agent wrapper:
         @args
-            model: tf.keras.Model (or simply callable bit than some functionalities are not supported) returning dictionary with the possible keys: 'output' or 'mus' and 'sigmas' for continuius cases, optional 'value_estimate', containing tensors
+            model: tf.keras.Model (or simply callable bit than some functionalities are not supported) returning dictionary with the possible keys: 'q_values' or 'mus' and 'sigmas' for continuius cases, optional 'value_estimate', containing tensors
             weights: None or weights of the model
             action_sampling_type: string, supported are 'thompson', 'epsilon_greedy' and 'continous_normal_diagonal'
             epsilon: float for epsilon greedy sampling
@@ -64,11 +64,10 @@ class Agent():
         network_out = self.model(state)
 
         if self.action_sampling_type == 'epsilon_greedy':
-            logging.debug(f'epsilon_greedy with {self.epsilon}')
-            logits = network_out['output']
+            logits = network_out['q_values']
             if tf.is_tensor(logits):
                 logits= logits.numpy()
-            if random.random() < self.epsilon:
+            if random.random() > self.epsilon:
                 action = np.argmax(logits, axis=-1)
                 # log prob of epsilon
                 if return_log_prob: output['log_probability'] = np.asarray([np.log(self.epsilon)]*logits.shape[0])
@@ -83,7 +82,7 @@ class Agent():
 
         elif self.action_sampling_type == 'thompson':
             # q values
-            logits = network_out['output']
+            logits = network_out['q_values']
             if tf.is_tensor(logits):
                 logits= logits.numpy()
             logits  = logits/self.temperature
@@ -99,7 +98,7 @@ class Agent():
 
             if return_log_prob: output['log_probability'] = np.sum(norm.logpdf(action, mus, sigmas))
         else:
-            logging.warning(f'unsupported sampling method {self.actin_sampling_type}')
+            #logging.warning(f'unsupported sampling method {self.actin_sampling_type}')
             raise NotImplemented
         # pass on value estimate if there
         if self.value_estimate :
@@ -114,11 +113,11 @@ class Agent():
     def max_q(self, x):
         # computes the maximum q-value along each batch dimension
         model_out = self.model(x)
-        x = tf.reduce_max(model_out['output'], axis=-1)
+        x = tf.reduce_max(model_out['q_values'], axis=-1)
         return x
 
     def q_val(self, x, actions):
         # for each action return the q_value
         model_out = self.model(x)
-        x = tf.gather(model_out['output'], tf.cast(actions, dtype=tf.int32), batch_dims=0)
+        x = tf.gather(model_out['q_values'], tf.cast(actions, dtype=tf.int32), batch_dims=0)
         return x
