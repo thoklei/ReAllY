@@ -32,7 +32,7 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 The model **needs to outpu a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
 
 ### Main Project
-- ray needs to be initialized befor the sample maneger is used (ray.init(log_to_
+- ray needs to be initialized befor the sample maneger is used (ray.init(log_to_driver=False) to suppress logs)
 
 ### Sample Manager
 The sample manager should be initalized from the main process.
@@ -66,7 +66,6 @@ The sample manager should be initalized from the main process.
         remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
  
 ##### Example:
-
 kwargs = {
         'model' : MyModel,
         'environment' :'CartPole-v0',
