@@ -28,6 +28,12 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 
 
 ## Usage
+### Model
+The model **needs to outpu a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
+
+### Main Project
+- ray needs to be initialized befor the sample maneger is used (ray.init(log_to_
+
 ### Sample Manager
 The sample manager should be initalized from the main process.
 
@@ -37,9 +43,9 @@ The sample manager should be initalized from the main process.
         model: model Object
         environment: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
         num_parallel: int, number of how many agents to run in parall
-        total_steps: int, size of the total steps collected
-        returns: list of strings specifying what is to be returned by the box
-            supported are: 'value_estimate', 'log_prob', 'monte_carlo'
+        total_steps: int, how many steps to collect for the exporence replay
+        returns: list of strings specifying what extra information (besides state, action, reward, new_state, not_done) is to be returned by the experience replay
+            supported are: 'value_estimate', 'log_prob', 'monte_carlo', defaults to empty list
         actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
 
     @kwargs:
@@ -59,7 +65,21 @@ The sample manager should be initalized from the main process.
         remote_min_returns: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
         remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
  
+##### Example:
 
+kwargs = {
+        'model' : MyModel,
+        'environment' :'CartPole-v0',
+        'num_parallel' :5,
+        'total_steps' :100,
+        'returns' : ['monte_carlo']
+        'action_sampling_type' :'thompson',
+        'model_kwargs': {
+            'num_actions: 2 }
+        'temperature' : 0.5,
+        'num_episodes': 20
+    }
+manager = SampleManager(**kwargs)
 
 #### Methods
 
