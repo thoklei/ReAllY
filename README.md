@@ -29,10 +29,10 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 
 ## Usage
 ### Model
-The model **needs to outpu a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
+The model **needs to output a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
 
 ### Main Project
-- ray needs to be initialized befor the sample maneger is used (ray.init(log_to_driver=False) to suppress logs)
+- ray needs to be initialized before the sample manager is used (ray.init(log_to_driver=False) to suppress logs)
 
 ### Sample Manager
 The sample manager should be initalized from the main process.
@@ -83,6 +83,8 @@ The sample manager should be initalized from the main process.
     manager = SampleManager(**kwargs)
 
 #### Methods
+
+##### Handling data
     manager.get_data()
         returns: dictionary with remoteley collected data according to the managers specifications
 
@@ -103,7 +105,9 @@ The sample manager should be initalized from the main process.
             sample_size: [int] how many samples to draw
          kwargs: 
             from_buffer: [boolean] if True samples are randomly drawn from the buffer, else new samples are created using the remote runners and the current agent
-     
+  
+  ##### Handling the agent
+  
      manager.get_agent()
       -> returns the current agent, an agent has the methods:
             agent.act(state)
@@ -124,6 +128,7 @@ The sample manager should be initalized from the main process.
         -> loads the most recent model in the folder specified by path using tf.keras.models.load_model()
         returns: agent with loaded weights
         
+ ##### Handling evaluation
       
       manager.test(self, max_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False)
         args: 
@@ -147,7 +152,7 @@ The sample manager should be initalized from the main process.
        
        
     
-   
+   All funcionalities are demonstrated in the showcase.py script.
     
     
 
