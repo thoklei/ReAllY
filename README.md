@@ -116,13 +116,36 @@ The sample manager should be initalized from the main process.
         -> updates the current agents weights
     
     manager.save_model(path, epoch, model_name='model')
+        args: 
+            path: [str] specifying the relative path to the folder where the model should be saved in 
         -> creates a folder in the folder specified by 'path' where the current model is saved using tensorflows model.save (only supported for tf models currently!)
         
      manager.load_model(path)
         -> loads the most recent model in the folder specified by path using tf.keras.models.load_model()
         returns: agent with loaded weights
         
-      manager
+      
+      manager.test(self, max_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False)
+        args: 
+            max_steps: [int] how many max steps to take in the environment
+         kwargs: 
+            test_episodes: [int] how many episodes to test
+            evaluation_measure: [string] specifiying what to be returned, can be 'time', 'reward' or 'time_and_reward'
+            render: [boolean] whether to render the environmend while testing
+            do_print: [boolean] whether to print the mean evaluation measure
+          -> returns list of mean time steps or rewards or both
+        
+      manager.initialize_aggregator(self, path, saving_after=10, aggregator_keys=['loss'])
+        args:
+            path: [str] relative path specifiying the folder where plots tracking the training progress should be saved to
+        kwargs: 
+            saving_after: [int] after how many iterations of aggregator updates the results should be visualized and saved in a plot
+            aggregator_keys: [list of strings] keys for the internal dictonary specifiying what should be tracked
+       
+       manager.update_aggregator(**kwargs)
+       -> takes a list of named arguments where the names should match the aggregators keys and refers to a list of values to be stored in the aggregator
+       
+       
     
    
     
