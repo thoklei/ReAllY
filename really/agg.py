@@ -6,7 +6,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class Smoothing_aggregator:
 
-    def __init__(self, path, saving_after=100, aggregator_keys = ['loss'], max_size=2):
+    def __init__(self, path, saving_after=100, aggregator_keys = ['loss'], max_size=10):
         self.aggregator_size = 0
         self.aggregator_max_size = max_size
         self.aggregator = {}

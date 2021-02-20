@@ -18,25 +18,31 @@ from really.utils import all_subdirs_of
 class SampleManager():
 
     """
-    model: model Object
-    environment: string specifying gym environment
-    num_parallel: int, number of how many agents to run in parall
-    total_steps: int, size of the total steps collected
-    returns: list of strings specifying what is to be returned by the box
+    @args:
+        model: model Object
+        environment: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
+        num_parallel: int, number of how many agents to run in parall
+        total_steps: int, how many steps to collect for the experience replay
+        returns: list of strings specifying what is to be returned by the box
             supported are: 'value_estimate', 'log_prob', 'monte_carlo'
-    actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
-    kwargs:
+        actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+
+    @kwargs:
+        model_kwargs: dict, optional model initialization specifications
+        weights: optional, weights which can be loaded into the agent for remote data collecting
+        input_shape: shape or boolean (if shape not needed for first call of model), defaults shape of the environments reset state
+
+        env_config: dict, opitonal configurations for environment creation if a custom environment is used
+
         num_episodes: specifies the total number of episodes to run on the environment for each runner, defaults to 1
         num_steps: specifies the total number of steps to run on the environment for each runner
+
         gamma: float, discount factor for monte carlo return, defaults to 0.99
         temperature: float, temperature for thomson sampling, defaults to 1
         epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
-        weights: weights of the model, not needed if input_shape is given
-        model_kwargs: dict, optional model initialization specifications
-        input_shape: shape or False, shape needed for first call of model
+
         remote_min_returns: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
         remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
-        env_config: dict, containing a string (gym env name) and a class(if custom environment) or None(if stand)
     """
 
     def __init__(self, model, environment, num_parallel, total_steps, returns=[], **kwargs):
@@ -66,9 +72,9 @@ class SampleManager():
         self.data['state'] = []
         self.data['reward'] = []
         self.data['state_new'] = []
-        self.data['terminal'] = []
+        self.data['not_done'] = []
 
-        ## TODO some checkups
+        ## some checkups
 
         assert self.num_parallel > 0, 'num_parallel hast to be greater than 0!'
 
@@ -90,8 +96,6 @@ class SampleManager():
                 if r == 'value_estimate':
                     self.kwargs['value_estimate'] = True
             else: self.data[r] = []
-
-        # # TODO: check if model can be initialized
 
         # check for runner sampling method:
         # error if both are specified
@@ -233,13 +237,13 @@ class SampleManager():
     def set_epsilon(self, epsilon):
         self.kwargs['epsilon'] = epsilon
 
-    def initilize_buffer(self, size, optim_keys):
+    def initilize_buffer(self, size, optim_keys=['state', 'action', 'reward', 'state_new', 'not_done']):
         self.buffer = Replay_buffer(size, optim_keys)
 
     def store_in_buffer(self, data_dict):
         self.buffer.put(data_dict)
 
-    def test(self, test_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False):
+    def test(self, max_steps, test_episodes=100, evaluation_measure='time', render=False, do_print=False):
 
         env = self.env_instance
         agent = self.get_agent(test=True)
@@ -269,7 +273,7 @@ class SampleManager():
             if return_reward:
                 reward_per_episode = []
 
-            for t in range(test_steps):
+            for t in range(max_steps):
                 if render: env.render()
                 state = state_new
                 action = agent.act(state)
@@ -286,7 +290,7 @@ class SampleManager():
                     if return_reward:
                         rewards.append(np.mean(reward_per_episode))
                     break
-                if (t == test_steps-1):
+                if (t == max_steps-1):
                     if return_time:
                         time_steps.append(t)
                     if return_reward:
@@ -317,20 +321,23 @@ class SampleManager():
     def env_creator(self, object, **kwargs):
         return object(**kwargs)
 
-    def save_model(self, path, epoch, model_name='model', create_dir=True):
+    def save_model(self, path, epoch, model_name='model'):
         time_stamp = datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p")
         full_path = f"{path}/{model_name}_{epoch}_{time_stamp}"
         agent = self.get_agent()
         print('saving model...')
         agent.model.save(full_path)
 
-    def load_model(self, path):
-        # alweys leads the latest model
-        subdirs = all_subdirs_of(path)
-        latest_subdir = max(subdirs, key=os.path.getmtime)
-        print('loading model...')
-        model = tf.keras.models.load_model(latest_subdir)
-        weights = model.get_weights()
-        self.set_agent(weights)
-        agent = self.get_agent()
+    def load_model(self, path, model_name=None):
+        if name is not None:
+            raise NotImplemented
+        else:
+            # alweys leads the latest model
+            subdirs = all_subdirs_of(path)
+            latest_subdir = max(subdirs, key=os.path.getmtime)
+            print('loading model...')
+            model = tf.keras.models.load_model(latest_subdir)
+            weights = model.get_weights()
+            self.set_agent(weights)
+            agent = self.get_agent()
         return agent

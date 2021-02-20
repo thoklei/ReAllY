@@ -1,21 +1,15 @@
-# big box -> check kwargs
-
 # deep q tune hyperparameters
+# fix deepq: l2 regularizer, netzwerk größer, lr runter
 
-# max env steps everywhere
 
-
-# doku !!
 # test script as example of all funcionalities
 
-# terminals = not done
 
 # prepar a2c
 
 
-
-
 FANCY:
+- load model with name spec.
 - print info
 - progress bar over epochs
 - colour list for aggregator

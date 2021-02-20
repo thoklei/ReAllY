@@ -75,7 +75,7 @@ if __name__== "__main__":
     saving_after = 2
 
     # keys for replay buffer -> what you will need for optimization
-    optim_keys = ['state', 'action', 'reward', 'state_new', 'terminal']
+    optim_keys = ['state', 'action', 'reward', 'state_new', 'not_done']
 
     # initialize buffer
     manager.initilize_buffer(buffer_size, optim_keys)
@@ -100,6 +100,7 @@ if __name__== "__main__":
 
         # sample data to optimize on from buffer
         sample_dict = manager.sample(sample_size)
+        print(f'collected data for: {sample_dict.keys()})
         # create and batch datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
@@ -120,7 +121,7 @@ if __name__== "__main__":
         manager.save_model(saving_path, e)
         # update aggregator
         time_steps = manager.test(test_steps)
-        manager.update_agg(loss=dummy_losses, time_steps=time_steps)
+        manager.update_aggregator(loss=dummy_losses, time_steps=time_steps)
         print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}"   )
 
     print('done')

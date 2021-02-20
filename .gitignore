@@ -1,6 +1,7 @@
 deep_q.py
 deep_q_remote.py
 deep_q_target.py
+deep_q_vanilla.py
 deep_q_target_cycle.py
 test_fun.py
 progress

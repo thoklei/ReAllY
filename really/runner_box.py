@@ -28,24 +28,26 @@ class RunnerBox():
         returns: list of strings specifying what is to be returned by the box
                 supported are: 'value_estimate', 'log_prob', 'monte_carlo'
 
-        kwargs:
-                action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
-                temperature: float, temperature for thomson sampling, defaults to 1
-                epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
-                weights: weights of the model, not needed if input_shape is given
-                model_kwargs: dict, optional, model specificatins requried for initialization
-                gamma: float, discount factor for monte carlo return, defaults to 0.99
-                $env_kwargs: dictionary, optional custom environment specifications
-                input_shape: boolean, if model needs input shape for initial call, defaults to True
-            """
+    @kwargs:
+        action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+        temperature: float, temperature for thomson sampling, defaults to 1
+        epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
+        weights: weights of the model, not needed if input_shape is given
+        model_kwargs: dict, optional, model specificatins requried for initialization
+        gamma: float, discount factor for monte carlo return, defaults to 0.99
+        env_kwargs: dictionary, optional custom environment specifications
+        input_shape: shape or boolean, if model needs input shape for initial call, defaults to the shape of the envs reset state
+    """
 
     def __init__(self, agent, model, environment, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
 
         self.env = environment
+        logging.basicConfig(filename=f'logging/box{runner_position}.log', level=logging.DEBUG)
         # if input shape is not set or nod needed, set to state shape fo model initialization
         if not('input_shape' in kwargs):
             state = self.env.reset()
             state = np.expand_dims(state, axis=0)
+            logging.warning(state, state.shape)
             kwargs['input_shape'] = state.shape
 
         self.agent = agent(model, **kwargs)
@@ -57,7 +59,7 @@ class RunnerBox():
         self.return_value_estimate = False
         self.return_monte_carlo = False
 
-        logging.basicConfig(filename=f'logging/box{self.runner_position}.log', level=logging.DEBUG)
+
 
         # initialize default data agg
         data_agg = {}
@@ -65,7 +67,7 @@ class RunnerBox():
         data_agg['state'] = []
         data_agg['reward'] = []
         data_agg['state_new'] = []
-        data_agg['terminal'] = []
+        data_agg['not_done'] = []
 
         # initilize optional returns
         for key in self.returns:
@@ -87,7 +89,7 @@ class RunnerBox():
     #@ray.remote(num_returns=2)
     def run_n_steps(self, num_steps, max_env=None):
         import tensorflow as tf
-        
+
         if max_env is not None: self.env.__num_steps = max_env
         state = self.env.reset()
         step = 0
@@ -113,7 +115,7 @@ class RunnerBox():
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['terminal'].append(float(int(not(done))))
+                self.data_agg['not_done'].append(float(int(not(done))))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
@@ -152,7 +154,7 @@ class RunnerBox():
                 new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
-                self.data_agg['terminal'].append(int(not(done)))
+                self.data_agg['not_done'].append(int(not(done)))
 
                 # append optional in time values to data data
                 if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
