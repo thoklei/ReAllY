@@ -10,14 +10,22 @@ class Replay_buffer:
         for k in keys:
             self.buffer[k] = []
         self.size = size
+        self.keys = keys
 
     def put(self, data_dict):
+        dict_keys = list(data_dict.keys())
 
-        if len(self.buffer['state']) >= self.size:
+        current_len = len(self.buffer[self.keys[0]])
+        add_len = len(data_dict[dict_keys[0]])
+        new_len = current_len+add_len
+
+        if new_len >= self.size:
+            pop_len = new_len - self.size
+
             for k in self.buffer.keys():
-                self.buffer[k].pop(0)
+                self.buffer[k] = self.buffer[k][pop_len:]
 
-        for k in data_dict.keys():
+        for k in dict_keys:
             self.buffer[k].extend(data_dict[k])
 
         return self.buffer

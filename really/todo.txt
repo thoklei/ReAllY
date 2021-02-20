@@ -4,17 +4,15 @@
 
 # max env steps everywhere
 
-# test set epsilon to 1, temperature to 0.001
 
 # doku !!
 # test script as example of all funcionalities
 
 # terminals = not done
-# output dict mit expl. keys
 
 # prepar a2c
 
-# saving and loading model
+
 
 
 FANCY:

@@ -181,7 +181,8 @@ class SampleManager():
                 self.data[k].extend(r[k])
 
         # stop if enought data is aggregated
-        if len(self.data['terminal']) > self.total_steps:
+        if len(self.data['state']) > self.total_steps:
+
             not_done = False
 
         return not_done
@@ -327,7 +328,6 @@ class SampleManager():
         # alweys leads the latest model
         subdirs = all_subdirs_of(path)
         latest_subdir = max(subdirs, key=os.path.getmtime)
-        print(latest_subdir)
         print('loading model...')
         model = tf.keras.models.load_model(latest_subdir)
         weights = model.get_weights()

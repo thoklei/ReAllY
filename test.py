@@ -67,7 +67,7 @@ if __name__== "__main__":
     manager = SampleManager(**kwargs)
     saving_path = os.getcwd()+'/progress_test'
 
-    buffer_size = 500
+    buffer_size = 5000
     test_steps = 50
     epochs = 10
     sample_size = 10
