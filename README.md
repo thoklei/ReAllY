@@ -31,39 +31,34 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 ### Sample Manager
 The sample manager should be initalized from the main process.
 
-#### Args
+#### Initialization
 
- **model**: callable model Object which needs to have the methods 'load_weights()' and 'set_weights()'
-  
-  **environment**: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
-  
-  **num_parallel**: int, number of how many agents to run in parall (should correspond to machines cpu cores)
-  
-  **total_steps**: int, size of the total steps collected
-  
-  **returns**: list of strings specifying what is to be returned by the box, supported are: 'value_estimate', 'log_prob', 'monte_carlo'
-  
-  **actin_sampling_type**: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+    @args:
+        model: model Object
+        environment: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
+        num_parallel: int, number of how many agents to run in parall
+        total_steps: int, size of the total steps collected
+        returns: list of strings specifying what is to be returned by the box
+            supported are: 'value_estimate', 'log_prob', 'monte_carlo'
+        actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
 
+    @kwargs:
+        model_kwargs: dict, optional model initialization specifications
+        weights: optional, weights which can be loaded into the agent for remote data collecting
+        input_shape: shape or boolean (if shape not needed for first call of model), defaults shape of the environments reset state
 
-#### kwargs:
-        **model_kwargs**: dict, optional model initialization specifications
-        **weights**: optional, weights which can be loaded into the agent for remote data collecting
-        **input_shape**: shape or boolean (if shape not needed for first call of model), defaults shape of the environments reset state
-        
-         **env_config**: dict, opitonal configurations for environment creation if a custom environment is used
-        
-        **num_episodes**: specifies the total number of episodes to run on the environment for each runner, defaults to 1
-        **num_steps**: specifies the total number of steps to run on the environment for each runner
-      
-        **gamma**: float, discount factor for monte carlo return, defaults to 0.99
-        **temperature**: float, temperature for thomson sampling, defaults to 1
-        **epsilon**: epsilon for epsilon greedy sampling, defaults to 0.95
-       
-        **remote_min_returns**: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
-        **remote_time_out**: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
-       
-    """
+        env_config: dict, opitonal configurations for environment creation if a custom environment is used
+
+        num_episodes: specifies the total number of episodes to run on the environment for each runner, defaults to 1
+        num_steps: specifies the total number of steps to run on the environment for each runner
+
+        gamma: float, discount factor for monte carlo return, defaults to 0.99
+        temperature**: float, temperature for thomson sampling, defaults to 1
+        epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
+
+        remote_min_returns: int, minimum number of remote runner results to wait for, defaults to 10% of num_parallel
+        remote_time_out: float, maximum amount of time (in seconds) to wait on the remote runner results, defaults to None
+ 
 
 
 #### Methods
