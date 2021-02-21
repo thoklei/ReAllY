@@ -219,7 +219,6 @@ class SampleManager():
         # get agent specifications from runner box
         runner_box = RunnerBox.remote(Agent, self.model, self.env_instance, runner_position=0, returns=self.returns, **self.kwargs)
         agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
-
         agent = Agent(self.model, **agent_kwargs)
 
         if test:

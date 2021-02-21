@@ -27,10 +27,7 @@ class Smoothing_aggregator:
         saved = False
         for k in kwargs.keys():
             if k in self.aggregator.keys():
-                if k=='loss':
-                    kwargs[k] = [np.squeeze(a) for a in kwargs[k]]
-                    self.aggregator[k] = np.concatenate([self.aggregator[k], np.concatenate(kwargs[k])]).tolist()
-                else: self.aggregator[k].append(kwargs[k])
+                self.aggregator[k].append(kwargs[k])
                 increased = True
             else:
                 print(f"unsupported aggregator key: {k}, aggregator was only initialized with the keys {self.aggregator.keys()}")

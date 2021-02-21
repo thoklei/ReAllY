@@ -117,7 +117,7 @@ class Agent():
         return x
 
     def q_val(self, x, actions):
-        # for each action return the q_value
         model_out = self.model(x)
-        x = tf.gather(model_out['q_values'], tf.cast(actions, dtype=tf.int32), batch_dims=0)
+        q_values = tf.squeeze(model_out['q_values'])
+        x = tf.gather(q_values, actions, batch_dims=1)
         return x
