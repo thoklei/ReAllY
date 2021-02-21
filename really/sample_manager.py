@@ -315,7 +315,7 @@ class SampleManager():
     def initialize_aggregator(self, path, saving_after=10, aggregator_keys=['loss']):
         self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys)
 
-    def update_agg(self, **kwargs):
+    def update_aggregator(self, **kwargs):
         self.agg.update(**kwargs)
 
     def env_creator(self, object, **kwargs):
@@ -329,15 +329,17 @@ class SampleManager():
         agent.model.save(full_path)
 
     def load_model(self, path, model_name=None):
-        if name is not None:
-            raise NotImplemented
+        if model_name is not None:
+            # # TODO:
+            print('specific model loading not yet implemented')
         else:
-            # alweys leads the latest model
-            subdirs = all_subdirs_of(path)
-            latest_subdir = max(subdirs, key=os.path.getmtime)
-            print('loading model...')
-            model = tf.keras.models.load_model(latest_subdir)
-            weights = model.get_weights()
-            self.set_agent(weights)
-            agent = self.get_agent()
+            pass
+        # alweys leads the latest model
+        subdirs = all_subdirs_of(path)
+        latest_subdir = max(subdirs, key=os.path.getmtime)
+        print('loading model...')
+        model = tf.keras.models.load_model(latest_subdir)
+        weights = model.get_weights()
+        self.set_agent(weights)
+        agent = self.get_agent()
         return agent

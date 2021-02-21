@@ -68,26 +68,27 @@ if __name__== "__main__":
     saving_path = os.getcwd()+'/progress_test'
 
     buffer_size = 5000
-    test_steps = 50
-    epochs = 10
-    sample_size = 10
+    test_steps = 1000
+    epochs = 20
+    sample_size = 1000
     optim_batch_size = 8
-    saving_after = 2
+    saving_after = 5
 
     # keys for replay buffer -> what you will need for optimization
     optim_keys = ['state', 'action', 'reward', 'state_new', 'not_done']
 
     # initialize buffer
     manager.initilize_buffer(buffer_size, optim_keys)
-    #agent = manager.get_agent()
-    agent = manager.load_model(path=saving_path)
 
     # initilize progress aggregator
-    manager.initialize_aggregator(path=saving_path, saving_after=saving_after, aggregator_keys=['loss', 'time_steps'])
+    manager.initialize_aggregator(path=saving_path, saving_after=5, aggregator_keys=['loss', 'time_steps'])
 
     # initial testing:
     print('test before training: ')
     manager.test(test_steps, do_print=True)
+
+    # get initial agent
+    agent = manager.get_agent()
 
     for e in range(epochs):
 
@@ -100,7 +101,7 @@ if __name__== "__main__":
 
         # sample data to optimize on from buffer
         sample_dict = manager.sample(sample_size)
-        print(f'collected data for: {sample_dict.keys()})
+        print(f'collected data for: {sample_dict.keys()}')
         # create and batch datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
@@ -110,7 +111,7 @@ if __name__== "__main__":
 
         # TODO: optimize agent
 
-        dummy_losses = [np.random.rand(10) for _ in range(10)]
+        dummy_losses =  [np.mean(np.random.normal(size=(64,100)),axis=0) for _ in range(1000)]
 
         new_weights = agent.model.get_weights()
 
@@ -118,12 +119,17 @@ if __name__== "__main__":
         manager.set_agent(new_weights)
         # get new weights
         agent = manager.get_agent()
-        manager.save_model(saving_path, e)
         # update aggregator
         time_steps = manager.test(test_steps)
         manager.update_aggregator(loss=dummy_losses, time_steps=time_steps)
-        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}"   )
+        print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}")
 
+        if e%saving_after==0:
+            # you can save models
+            manager.save_model(saving_path, e)
+
+    # and load mmodels
+    manager.load_model(saving_path)
     print('done')
     print('testing optimized agent')
-    manager.test(test_steps, render=True)
+    manager.test(test_steps, test_episodes=10, render=True)

@@ -6,7 +6,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class Smoothing_aggregator:
 
-    def __init__(self, path, saving_after=100, aggregator_keys = ['loss'], max_size=10):
+    def __init__(self, path, saving_after=100, aggregator_keys = ['loss'], max_size=5):
         self.aggregator_size = 0
         self.aggregator_max_size = max_size
         self.aggregator = {}
@@ -15,14 +15,14 @@ class Smoothing_aggregator:
         for k in aggregator_keys:
             self.aggregator[k] = []
             self.aggregator_vals[k] = []
-
+        self.keys = aggregator_keys
         self.path = path
         self.saving_after = saving_after
         self.epoch = 0
         self.reached_size=False
 
     def update(self, **kwargs):
-
+        self.epoch += 1
         increased = False
         saved = False
         for k in kwargs.keys():
@@ -38,15 +38,18 @@ class Smoothing_aggregator:
 
         if increased: self.aggregator_size+=1
 
+
         if self.aggregator_size >= self.aggregator_max_size:
             for k in kwargs.keys():
                 self.aggregator_vals[k].append(np.mean(np.asarray(self.aggregator[k])))
                 self.aggregator[k] = []
             self.aggregator_size = 0
             if not(self.reached_size): self.reached_size=True
-        if (self.epoch%self.saving_after==0) and self.reached_size:
-            self.save_graphic()
-        self.epoch += 1
+
+        if ((self.epoch%self.saving_after==0) and self.reached_size):
+            if len(self.aggregator_vals[self.keys[0]]) > 1:
+                self.save_graphic()
+
 
 
     def save_graphic(self):
