@@ -1,6 +1,7 @@
 import os, logging
+
 # only print error messages
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import numpy as np
 import gridworlds
@@ -10,13 +11,13 @@ from really.utils import discount_cumsum
 from ray.tune.registry import register_env
 
 
-
 def env_creator(dict):
     return GridWorld()  # return an env instance
 
+
 #
 @ray.remote
-class RunnerBox():
+class RunnerBox:
     """
     Runner Box handling interaction between an instance of the Agent and an instance of the environment.
 
@@ -39,16 +40,20 @@ class RunnerBox():
         input_shape: shape or boolean, if model needs input shape for initial call, defaults to the shape of the envs reset state
     """
 
-    def __init__(self, agent, model, environment, runner_position, returns=[], **kwargs): #gamma=0.99 ,weights=None, num_actions=None, input_shape=None, type=None, temperature=1, epsilon=0.95, value_estimate=False):
+    def __init__(
+        self, agent, model, environment, runner_position, returns=[], **kwargs
+        ):
 
         self.env = environment
-        logging.basicConfig(filename=f'logging/box{runner_position}.log', level=logging.DEBUG)
+        logging.basicConfig(
+            filename=f"logging/box{runner_position}.log", level=logging.DEBUG
+        )
         # if input shape is not set or nod needed, set to state shape fo model initialization
-        if not('input_shape' in kwargs):
+        if not ("input_shape" in kwargs):
             state = self.env.reset()
             state = np.expand_dims(state, axis=0)
             logging.warning(state, state.shape)
-            kwargs['input_shape'] = state.shape
+            kwargs["input_shape"] = state.shape
 
         self.agent = agent(model, **kwargs)
         self.agent_kwargs = kwargs
@@ -59,38 +64,37 @@ class RunnerBox():
         self.return_value_estimate = False
         self.return_monte_carlo = False
 
-
-
         # initialize default data agg
         data_agg = {}
-        data_agg['action'] = []
-        data_agg['state'] = []
-        data_agg['reward'] = []
-        data_agg['state_new'] = []
-        data_agg['not_done'] = []
+        data_agg["action"] = []
+        data_agg["state"] = []
+        data_agg["reward"] = []
+        data_agg["state_new"] = []
+        data_agg["not_done"] = []
 
         # initilize optional returns
         for key in self.returns:
             data_agg[key] = []
 
-            if key == 'log_prob':
+            if key == "log_prob":
                 self.return_log_prob = True
-            elif key == 'value_estimate' and self.agent.value_estimate:
+            elif key == "value_estimate" and self.agent.value_estimate:
                 self.return_value_estimate = True
-            elif key == 'monte_carlo':
+            elif key == "monte_carlo":
                 self.return_monte_carlo = True
-                if 'gamma' in kwargs.keys():
-                    self.gamma = kwargs['gamma']
+                if "gamma" in kwargs.keys():
+                    self.gamma = kwargs["gamma"]
                 else:
                     self.gamma = 0.99
 
         self.data_agg = data_agg
 
-    #@ray.remote(num_returns=2)
+    # @ray.remote(num_returns=2)
     def run_n_steps(self, num_steps, max_env=None):
         import tensorflow as tf
 
-        if max_env is not None: self.env.__num_steps = max_env
+        if max_env is not None:
+            self.env.__num_steps = max_env
         state = self.env.reset()
         step = 0
 
@@ -99,68 +103,83 @@ class RunnerBox():
             new_state = self.env.reset()
             while not done:
                 state = new_state
-                agent_out = self.agent.act_experience(np.expand_dims(state,axis=0), self.return_log_prob)
+                agent_out = self.agent.act_experience(
+                    np.expand_dims(state, axis=0), self.return_log_prob
+                )
 
                 # S
-                self.data_agg['state'].append(state)
+                self.data_agg["state"].append(state)
                 # A
-                action = agent_out['action']
+                action = agent_out["action"]
                 if tf.is_tensor(action):
                     action = action.numpy()
                 new_state, reward, done, info = self.env.step(int(action))
-                self.data_agg['action'].append(int(action))
+                self.data_agg["action"].append(int(action))
                 # R
-                self.data_agg['reward'].append(reward)
+                self.data_agg["reward"].append(reward)
                 # S+1
-                #new_state = np.expand_dims(new_state, axis=0)
-                self.data_agg['state_new'].append(new_state)
+                self.data_agg["state_new"].append(new_state)
                 # info on terminal state
-                self.data_agg['not_done'].append(float(int(not(done))))
+                self.data_agg["not_done"].append(float(int(not (done))))
 
                 # append optional in time values to data data
-                if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
-                if self.return_value_estimate: self.data_agg['value_estimate'].append(agent_out['value_estimate'])
+                if self.return_log_prob:
+                    self.data_agg["log_prob"].append(agent_out["log_probability"])
+                if self.return_value_estimate:
+                    self.data_agg["value_estimate"].append(agent_out["value_estimate"])
 
                 step += 1
-                if step == num_steps: break
+                if step == num_steps:
+                    break
 
-        if self.return_monte_carlo: self.data_agg['monte_carlo'] = discount_cumsum(self.data_agg['reward'], self.gamma)
+        if self.return_monte_carlo:
+            self.data_agg["monte_carlo"] = discount_cumsum(
+                self.data_agg["reward"], self.gamma
+            )
 
         return self.data_agg, self.runner_position
 
-    #@ray.remote(num_returns=2)
-    def run_n_episodes(self, num_episodes, max_env = None):
+    # @ray.remote(num_returns=2)
+    def run_n_episodes(self, num_episodes, max_env=None):
         import tensorflow as tf
-        if max_env is not None: self.env.__num_steps = max_env
+
+        if max_env is not None:
+            self.env.__num_steps = max_env
         state = self.env.reset()
         for e in range(num_episodes):
             done = False
             new_state = self.env.reset()
             while not done:
                 state = new_state
-                agent_out = self.agent.act_experience(np.expand_dims(state, axis=0), self.return_log_prob)
+                agent_out = self.agent.act_experience(
+                    np.expand_dims(state, axis=0), self.return_log_prob
+                )
                 # S
-                self.data_agg['state'].append(state)
+                self.data_agg["state"].append(state)
                 # A
-                action = agent_out['action']
+                action = agent_out["action"]
                 if tf.is_tensor(action):
                     action = action.numpy()
                 # A
                 new_state, reward, done, info = self.env.step(int(action))
-                self.data_agg['action'].append(action)
+                self.data_agg["action"].append(action)
                 # R
-                self.data_agg['reward'].append(reward)
+                self.data_agg["reward"].append(reward)
                 # S+1
-                #new_state = np.expand_dims(new_state, axis=0)
-                self.data_agg['state_new'].append(new_state)
+                self.data_agg["state_new"].append(new_state)
                 # info on terminal state
-                self.data_agg['not_done'].append(int(not(done)))
+                self.data_agg["not_done"].append(int(not (done)))
 
                 # append optional in time values to data data
-                if self.return_log_prob: self.data_agg['log_prob'].append(agent_out['log_probability'])
-                if self.return_value_estimate: self.data_agg['value_estimate'].append(agent_out['value_estimate'])
+                if self.return_log_prob:
+                    self.data_agg["log_prob"].append(agent_out["log_probability"])
+                if self.return_value_estimate:
+                    self.data_agg["value_estimate"].append(agent_out["value_estimate"])
 
-        if self.return_monte_carlo: self.data_agg['monte_carlo'] = discount_cumsum(self.data_agg['reward'], self.gamma)
+        if self.return_monte_carlo:
+            self.data_agg["monte_carlo"] = discount_cumsum(
+                self.data_agg["reward"], self.gamma
+            )
 
         return self.data_agg, self.runner_position
 

@@ -2,6 +2,7 @@ from scipy import signal
 import tensorflow as tf
 import os
 
+
 def discount_cumsum(x, discount):
     """
     magic from rllab for computing discounted cumulative sums of vectors.
@@ -17,6 +18,7 @@ def discount_cumsum(x, discount):
     """
     return signal.lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
+
 def dict_to_dataset(data_dict, batch_size=None):
 
     datasets = []
@@ -29,6 +31,7 @@ def dict_to_dataset(data_dict, batch_size=None):
 
     return dataset, keys
 
+
 def dict_to_dict_of_datasets(data_dict, batch_size=None):
 
     dataset_dict = {}
@@ -39,9 +42,11 @@ def dict_to_dict_of_datasets(data_dict, batch_size=None):
 
     return dataset_dict
 
-def all_subdirs_of(b='.'):
+
+def all_subdirs_of(b="."):
     result = []
     for d in os.listdir(b):
         bd = os.path.join(b, d)
-        if os.path.isdir(bd): result.append(bd)
+        if os.path.isdir(bd):
+            result.append(bd)
     return result
