@@ -5,8 +5,8 @@ import tensorflow as tf
 import numpy as np
 import gym
 import ray
-from really import SampleManager
-from really.utils import dict_to_dict_of_datasets
+from really import SampleManager # important !!
+from really.utils import dict_to_dict_of_datasets # convenient function for you to create tensorflow datasets
 
 
 class MyModel(tf.keras.Model):
@@ -23,7 +23,6 @@ class MyModel(tf.keras.Model):
         x = self.layer(x_in)
         v = self.layer2(x)
         output['q_values'] = x
-        output['value_estimate'] = v
         return output
 
 
@@ -45,7 +44,6 @@ class ModelContunous(tf.keras.Model):
         v = self.layer_v(x_in)
         output['mu'] = mus
         output['sigma'] = sigmas
-        output['value_estimate'] = v
 
         return output
 
@@ -57,14 +55,16 @@ if __name__== "__main__":
         'environment' :'CartPole-v0',
         'num_parallel' :5,
         'total_steps' :100,
-        'action_sampling_type' :'thompson',
+        'action_sampling_type' :'epsilon_greedy',
         'num_episodes': 20,
+        'epsilon' : 1,
 
     }
 
     ray.init(log_to_driver=False)
 
     manager = SampleManager(**kwargs)
+    # where to save your results to: create this directory in advance!
     saving_path = os.getcwd()+'/progress_test'
 
     buffer_size = 5000
@@ -102,7 +102,7 @@ if __name__== "__main__":
         # sample data to optimize on from buffer
         sample_dict = manager.sample(sample_size)
         print(f'collected data for: {sample_dict.keys()}')
-        # create and batch datasets
+        # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print('optimizing...')
@@ -122,7 +122,11 @@ if __name__== "__main__":
         # update aggregator
         time_steps = manager.test(test_steps)
         manager.update_aggregator(loss=dummy_losses, time_steps=time_steps)
+        # print progress
         print(f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}")
+
+        # yeu can also alter your managers parameters
+        manager.set_epsilon(epsilon=0.99)
 
         if e%saving_after==0:
             # you can save models
