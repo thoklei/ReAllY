@@ -118,6 +118,6 @@ class Agent():
 
     def q_val(self, x, actions):
         model_out = self.model(x)
-        q_values = tf.squeeze(model_out['q_values'])
+        q_values = model_out['q_values']
         x = tf.gather(q_values, actions, batch_dims=1)
         return x

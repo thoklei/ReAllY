@@ -96,10 +96,10 @@ class RunnerBox():
 
         while step < num_steps:
             done = False
-            new_state = np.expand_dims(self.env.reset(), axis=0)
+            new_state = self.env.reset()
             while not done:
                 state = new_state
-                agent_out = self.agent.act_experience(state, self.return_log_prob)
+                agent_out = self.agent.act_experience(np.expand_dims(state,axis=0), self.return_log_prob)
 
                 # S
                 self.data_agg['state'].append(state)
@@ -108,11 +108,11 @@ class RunnerBox():
                 if tf.is_tensor(action):
                     action = action.numpy()
                 new_state, reward, done, info = self.env.step(int(action))
-                self.data_agg['action'].append(action)
+                self.data_agg['action'].append(int(action))
                 # R
                 self.data_agg['reward'].append(reward)
                 # S+1
-                new_state = np.expand_dims(new_state, axis=0)
+                #new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
                 self.data_agg['not_done'].append(float(int(not(done))))
@@ -135,10 +135,10 @@ class RunnerBox():
         state = self.env.reset()
         for e in range(num_episodes):
             done = False
-            new_state = np.expand_dims(self.env.reset(), axis=0)
+            new_state = self.env.reset()
             while not done:
                 state = new_state
-                agent_out = self.agent.act_experience(state, self.return_log_prob)
+                agent_out = self.agent.act_experience(np.expand_dims(state, axis=0), self.return_log_prob)
                 # S
                 self.data_agg['state'].append(state)
                 # A
@@ -151,7 +151,7 @@ class RunnerBox():
                 # R
                 self.data_agg['reward'].append(reward)
                 # S+1
-                new_state = np.expand_dims(new_state, axis=0)
+                #new_state = np.expand_dims(new_state, axis=0)
                 self.data_agg['state_new'].append(new_state)
                 # info on terminal state
                 self.data_agg['not_done'].append(int(not(done)))

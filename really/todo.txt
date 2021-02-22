@@ -1,14 +1,10 @@
-# deep q tune hyperparameters
-# fix deepq: l2 regularizer, netzwerk größer, lr runter
-
-
-# test script as example of all funcionalities
 
 
 # prepar a2c
 
 
 FANCY:
+- env max time steps
 - load model with name spec.
 - print info
 - progress bar over epochs
