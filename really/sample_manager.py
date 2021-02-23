@@ -88,10 +88,11 @@ class SampleManager:
                 print(
                     f"unsupported sampling type: {type}. assuming thompson sampling instead."
                 )
+                self.kwargs["action_sampling_type"] = "thompson"
             if type == 'continous_normal_diagonal':
                 self.discrete_env = False
                 self.kwargs['discrete_env'] = False
-            self.kwargs["action_sampling_type"] = "thompson"
+
 
         if not ("temperature" in self.kwargs.keys()):
             self.kwargs["temperature"] = 1
