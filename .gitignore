@@ -6,6 +6,8 @@ deep_q_vanilla_lunar.py
 deep_q_target_cycle.py
 test_fun.py
 test.py
+a2c.py
+
 progress
 progress_deep_q
 progress_deep_q_lunar

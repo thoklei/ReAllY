@@ -200,6 +200,7 @@ class SampleManager:
     # stores results and asserts if we are done
     def _store(self, results):
         not_done = True
+
         # results is a list of dctinaries
         assert (
             self.data.keys() == results[0].keys()
@@ -211,7 +212,6 @@ class SampleManager:
 
         # stop if enought data is aggregated
         if len(self.data["state"]) > self.total_steps:
-
             not_done = False
 
         return not_done
@@ -221,14 +221,9 @@ class SampleManager:
         if from_buffer:
             dict = self.buffer.sample(sample_size)
         else:
-            # save old sepcification
-            old_total_steps = self.total_steps
-            # set to sampling size
-            self.total_steps = sample_size
-            self.get_data()
-            dict = self.data
-            # restore old specification
-            self.total_steps = old_total_steps
+
+            dict = self.get_data(total_steps=sample_size)
+
         return dict
 
     def get_agent(self, test=False):
@@ -321,7 +316,7 @@ class SampleManager:
                 # check if action is tf
                 if tf.is_tensor(action):
                     action = action.numpy()
-                state_new, reward, done, info = env.step(int(action))
+                state_new, reward, done, info = env.step(action)
                 state_new = np.expand_dims(state_new, axis=0)
                 if return_reward:
                     reward_per_episode.append(reward)

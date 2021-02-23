@@ -52,11 +52,10 @@ class RunnerBox:
         if not ("input_shape" in kwargs):
             state = self.env.reset()
             state = np.expand_dims(state, axis=0)
-            logging.warning(state, state.shape)
+            #logging.warning(state, state.shape)
             kwargs["input_shape"] = state.shape
 
-        self.agent = agent(model, **kwargs)
-        self.agent_kwargs = kwargs
+
         self.runner_position = runner_position
         self.returns = returns
 
@@ -78,16 +77,20 @@ class RunnerBox:
 
             if key == "log_prob":
                 self.return_log_prob = True
-            elif key == "value_estimate" and self.agent.value_estimate:
+            if key == "value_estimate":
                 self.return_value_estimate = True
-            elif key == "monte_carlo":
+                kwargs['value_estimate'] = True
+            if key == "monte_carlo":
                 self.return_monte_carlo = True
                 if "gamma" in kwargs.keys():
                     self.gamma = kwargs["gamma"]
                 else:
                     self.gamma = 0.99
 
+        self.agent = agent(model, **kwargs)
+        self.agent_kwargs = kwargs
         self.data_agg = data_agg
+        logging.warning(f'data agg keys {self.data_agg.keys()}')
 
     # @ray.remote(num_returns=2)
     def run_n_steps(self, num_steps, max_env=None):
@@ -106,6 +109,7 @@ class RunnerBox:
                 agent_out = self.agent.act_experience(
                     np.expand_dims(state, axis=0), self.return_log_prob
                 )
+                logging.warning(f'agent out {agent_out.keys()}')
 
                 # S
                 self.data_agg["state"].append(state)
@@ -113,8 +117,8 @@ class RunnerBox:
                 action = agent_out["action"]
                 if tf.is_tensor(action):
                     action = action.numpy()
-                new_state, reward, done, info = self.env.step(int(action))
-                self.data_agg["action"].append(int(action))
+                new_state, reward, done, info = self.env.step(action)
+                self.data_agg["action"].append(action)
                 # R
                 self.data_agg["reward"].append(reward)
                 # S+1
@@ -154,6 +158,8 @@ class RunnerBox:
                 agent_out = self.agent.act_experience(
                     np.expand_dims(state, axis=0), self.return_log_prob
                 )
+                logging.warning(f'agent out {agent_out.keys()}')
+
                 # S
                 self.data_agg["state"].append(state)
                 # A
@@ -161,7 +167,7 @@ class RunnerBox:
                 if tf.is_tensor(action):
                     action = action.numpy()
                 # A
-                new_state, reward, done, info = self.env.step(int(action))
+                new_state, reward, done, info = self.env.step(action)
                 self.data_agg["action"].append(action)
                 # R
                 self.data_agg["reward"].append(reward)
