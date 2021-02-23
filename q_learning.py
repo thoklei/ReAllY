@@ -9,7 +9,12 @@ import gym
 import ray
 from q_model import QTable
 
-from really import SampleManager  # important !!
+from really import SampleManager  # important !
+
+import sys
+sys.path.append('gridworlds/gridworlds/envs')
+from gridworld import GridWorld
+
 from really.utils import (
     dict_to_dict_of_datasets,
 )  # convenient function for you to create tensorflow datasets
@@ -23,9 +28,18 @@ if __name__ == "__main__":
     if not os.path.exists("./progress_test/"):
         os.makedirs("progress_test")
 
+    env_kwargs = {
+        "height": 3,
+        "width": 4,
+        "start_position": (2, 0),
+        "reward_position": (0, 3),
+    }
+
+    grid = GridWorld(**env_kwargs)
+
     kwargs = {
         "model": QTable,
-        "environment": "CartPole-v0",
+        "environment": grid,
         "num_parallel": 5,
         "total_steps": 100,
         "action_sampling_type": "epsilon_greedy",

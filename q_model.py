@@ -23,7 +23,7 @@ class QTable(tf.keras.Model):
     def call(self, x_in):
 
         output = {}
-        output['q_values'] = np.array([0.5])#np.array([0.1,0.4,0.4,0.1])
+        output['q_values'] = np.array([0.1,0.4,0.4,0.1])
         #output['v_estimate'] = 0.5
 
         return output
