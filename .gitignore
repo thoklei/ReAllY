@@ -15,3 +15,7 @@ progress_tabq
 grid_q.py
 *.log
 gym_gridworld
+
+
+progress_test
+really/__pycache__
