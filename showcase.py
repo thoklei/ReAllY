@@ -51,6 +51,9 @@ class ModelContunous(tf.keras.Model):
 
 if __name__ == "__main__":
 
+    if not os.path.exists("./logging/"):
+        os.makedirs("logging")
+
     kwargs = {
         "model": MyModel,
         "environment": "CartPole-v0",

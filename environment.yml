@@ -82,6 +82,8 @@ dependencies:
   - xz=5.2.5=h7b6447c_0
   - zipp=3.4.0=pyhd3eb1b0_0
   - zlib=1.2.11=h7b6447c_3
+  - pandas
+  - matplotlib
   - pip:
     - absl-py==0.10.0
     - aiohttp-cors==0.7.0
@@ -126,4 +128,3 @@ dependencies:
     - tensorflow-probability==0.12.1
     - tqdm==4.56.2
     - yarl==1.5.1
-prefix: /home/charlie/miniconda3/envs/ReAlly
