@@ -31,7 +31,7 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 ### Model
 The model **needs to output a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
 
-### Main Project
+### Main Process
 - ray needs to be initialized before the sample manager is used (ray.init(log_to_driver=False) to suppress logs)
 
 ### Sample Manager
