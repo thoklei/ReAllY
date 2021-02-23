@@ -80,6 +80,7 @@ class SampleManager:
 
         assert self.num_parallel > 0, "num_parallel hast to be greater than 0!"
 
+        self.kwargs['discrete_env'] = True
         # check action sampling type
         if "action_sampling_type" in kwargs.keys():
             type = kwargs["action_sampling_type"]
@@ -87,7 +88,10 @@ class SampleManager:
                 print(
                     f"unsupported sampling type: {type}. assuming thompson sampling instead."
                 )
-                self.kwargs["action_sampling_type"] = "thompson"
+            if type == 'continous_normal_diagonal':
+                self.discrete_env = False
+                self.kwargs['discrete_env'] = False
+            self.kwargs["action_sampling_type"] = "thompson"
 
         if not ("temperature" in self.kwargs.keys()):
             self.kwargs["temperature"] = 1

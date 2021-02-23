@@ -62,6 +62,8 @@ class RunnerBox:
         self.return_log_prob = False
         self.return_value_estimate = False
         self.return_monte_carlo = False
+        self.discrete_env = kwargs['discrete_env']
+        kwargs.pop('discrete_env')
 
         # initialize default data agg
         data_agg = {}
@@ -117,6 +119,8 @@ class RunnerBox:
                 action = agent_out["action"]
                 if tf.is_tensor(action):
                     action = action.numpy()
+                if self.discrete_env:
+                    action = int(action)
                 new_state, reward, done, info = self.env.step(action)
                 self.data_agg["action"].append(action)
                 # R
@@ -167,6 +171,8 @@ class RunnerBox:
                 if tf.is_tensor(action):
                     action = action.numpy()
                 # A
+                if self.discrete_env:
+                    action = int(action)
                 new_state, reward, done, info = self.env.step(action)
                 self.data_agg["action"].append(action)
                 # R
