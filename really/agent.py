@@ -108,7 +108,7 @@ class Agent:
             output["action"] = action
             if return_log_prob:
                 output["log_probability"] = np.log(
-                    [probs[i][a] for i, a in zip(range(probs.shape[0]), action)]
+                    [probs[i][a] for i, a in zip(range(logits.shape[0]), action)]
                 )
 
         elif self.action_sampling_type == "continous_normal_diagonal":
