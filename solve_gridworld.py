@@ -1,12 +1,15 @@
+import logging, os
+
 import gym
 import numpy as np
 import tensorflow as tf
 import ray
 from really import SampleManager
+from really.utils import (
+    dict_to_dict_of_datasets,
+)
 
-#import sys
-#sys.path.append('gridworlds/gridworlds/envs')
-from gridworld import GridWorld
+from gridworlds.envs.gridworld import GridWorld
 
 """
 Your task is to solve the provided Gridword with tabular Q learning!
@@ -23,39 +26,29 @@ class TabularQ(object):
 
     def __init__(self, h, w, action_space):
         self.action_space = action_space
-        self.table = np.zeros((h, w, action_space))
+        self.table = np.zeros((action_space, h, w))
         
 
     def __call__(self, state):
-
-        if isinstance(state, tf.python.framework.ops.EagerTensor):
-            x,y = state[0]
-            x = int(x.numpy())
-            y = int(y.numpy())
-        else:
-            x,y = state[0]
-
-        self.state_x = x 
-        self.state_y = y
-        
-        print("x, y in call: ",x,y)
+        state = np.squeeze(state)
+        x,y = state
+        x = int(x)
+        y = int(y)
 
         output = {}
-        output["q_values"] = tf.constant([self.table[x,y,:]])
-
+        output["q_values"] = np.expand_dims(self.table[:, x,y], axis=0)
         # TODO return v_estimate
+
         return output
         
 
     def get_weights(self):
-        return self.table
+        return self.table.copy()
 
     def set_weights(self, q_vals):
         print("Q-vals in set_weights: ", q_vals)
-        self.table = q_vals
+        self.table = q_vals.copy()
 
-
-    # what else do you need?
 
 
 if __name__ == "__main__":
@@ -87,19 +80,39 @@ if __name__ == "__main__":
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    print("Agent: ",manager.get_agent())
+    # where to save your results to: create this directory in advance!
+    saving_path = os.getcwd() + "/progress_test"
+
+    # print("Agent: ",manager.get_agent())
+
+    # do the rest!!!!
+    epochs = 3
+    buffer_size = 5000
+    test_steps = 1000
+    sample_size = 1000
+    optim_batch_size = 8
+    saving_after = 5
+
+    alpha = 0.1
+    gamma = 0.95
+
+    # keys for replay buffer -> what you will need for optimization
+    optim_keys = ["state", "action", "reward", "state_new", "not_done"]
+    # initialize buffer
+    manager.initilize_buffer(buffer_size, optim_keys)
+    # initilize progress aggregator
+    manager.initialize_aggregator(
+        path=saving_path, saving_after=5, aggregator_keys=["loss", "time_steps"]
+    )
 
     print("test before training: ")
     manager.test(
-        max_steps=100,
-        test_episodes=10,
+        max_steps=10,
+        test_episodes=1,
         render=True,
         do_print=True,
         evaluation_measure="time_and_reward",
     )
-
-    # do the rest!!!!
-    epochs = 3
 
     # get initial agent
     agent = manager.get_agent()
@@ -115,22 +128,31 @@ if __name__ == "__main__":
         sample_dict = manager.sample(sample_size)
         print(f"collected data for: {sample_dict.keys()}")
         # create and batch tf datasets
-        data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
+        # data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print("optimizing...")
+        # print("sample_dict", sample_dict)
+        # rewards = sample_dict["reward"]
+        # print(rewards)
+        # print("data_dict: ", data_dict)
 
         # TODO: iterate through your datasets
+        old_table = agent.get_weights()
+        # new_table = old_table.copy()
+        for s, a , r , n , d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
+            print(s, a , r , n , d )
+            s_x, s_y = s
+            n_x, n_y = n
+            old_table[a, s_x, s_y] += alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
 
         # TODO: optimize agent
-
-        dummy_losses = [
-            np.mean(np.random.normal(size=(64, 100)), axis=0) for _ in range(1000)
-        ]
-
-        new_weights = agent.model.get_weights()
+        # ToDo: calculate losses
+        dummy_losses = [np.mean(np.random.normal(size=(64, 100)), axis=0) for _ in range(1000)]
+        # ToDo update weights
+        # new_weights = agent.model.get_weights()
 
         # set new weights
-        manager.set_agent(new_weights)
+        manager.set_agent(old_table)
         # get new weights
         agent = manager.get_agent()
         # update aggregator
@@ -146,5 +168,11 @@ if __name__ == "__main__":
 
         if e % saving_after == 0:
             # you can save models
-            manager.save_model(saving_path, e)
+            # manager.save_model(saving_path, e)
+            pass
 
+    # and load models
+    # manager.load_model(saving_path)
+    print("done")
+    print("testing optimized agent")
+    manager.test(test_steps, test_episodes=10, render=True)

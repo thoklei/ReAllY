@@ -3,9 +3,6 @@ import logging, os
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import tensorflow as tf
-import numpy as np
-import gym
 import ray
 from q_model import QTable
 
@@ -13,12 +10,7 @@ from really import SampleManager  # important !
 
 import sys
 sys.path.append('gridworlds/gridworlds/envs')
-from gridworld import GridWorld
-
-from really.utils import (
-    dict_to_dict_of_datasets,
-)  # convenient function for you to create tensorflow datasets
-
+from gridworlds.envs.gridworld import GridWorld
 
 if __name__ == "__main__":
 
