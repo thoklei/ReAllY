@@ -43,8 +43,6 @@ class Agent:
         self.temperature = temperature
         self.epsilon = epsilon
         self.value_estimate = value_estimate
-        logging.basicConfig(filename=f"logging/agent.log", level=logging.DEBUG)
-        logging.warning(f"input shape {input_shape}")
         # if weights given iitialize random weights, else set weights
         self.initialize_weights(self.model, input_shape)
 
