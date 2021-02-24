@@ -321,6 +321,8 @@ class SampleManager:
                 # check if action is tf
                 if tf.is_tensor(action):
                     action = action.numpy()
+                if self.kwargs['discrete_env']:
+                    action = int(action)
                 state_new, reward, done, info = env.step(action)
                 state_new = np.expand_dims(state_new, axis=0)
                 if return_reward:
