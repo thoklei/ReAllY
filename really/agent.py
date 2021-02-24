@@ -62,7 +62,7 @@ class Agent:
             assert (
                 input_shape != None
             ), 'You have a tensorflow model with no input shape specified for weight initialization. \n Specify input_shape in "model_kwargs" or specify as False if not needed'
-        dummy = tf.zeros(input_shape)
+        dummy = np.zeros(input_shape)
         model(dummy)
         weights = model.get_weights()
 
