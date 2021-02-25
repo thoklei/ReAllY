@@ -5,9 +5,9 @@ import numpy as np
 import tensorflow as tf
 import ray
 from really import SampleManager
-from really.utils import (
-    dict_to_dict_of_datasets,
-)
+# from really.utils import (
+#     dict_to_dict_of_datasets,
+# )
 
 from gridworlds.envs.gridworld import GridWorld
 
@@ -46,23 +46,23 @@ class TabularQ(object):
         return self.table.copy()
 
     def set_weights(self, q_vals):
-        print("Q-vals in set_weights: ", q_vals)
+        # print("Q-vals in set_weights: ", q_vals)
         self.table = q_vals.copy()
 
 
 
 if __name__ == "__main__":
+
     action_dict = {0: "UP", 1: "RIGHT", 2: "DOWN", 3: "LEFT"}
 
     env_kwargs = {
-        "height": 3,
-        "width": 4,
+        "height": 10,
+        "width": 10,
         "action_dict": action_dict,
         "start_position": (2, 0),
         "reward_position": (0, 3),
     }
 
-    # you can also create your environment like this after installation: env = gym.make('gridworld-v0')
     env = GridWorld(**env_kwargs)
 
     model_kwargs = {"h": env.height, "w": env.width, "action_space": 4}
@@ -70,10 +70,12 @@ if __name__ == "__main__":
     kwargs = {
         "model": TabularQ,
         "environment": GridWorld,
-        "num_parallel": 1,
-        "total_steps": 10,
-        "model_kwargs": model_kwargs
-        # and more
+        "num_parallel": 2,
+        "total_steps": 200,
+        "model_kwargs": model_kwargs,
+        "action_sampling_type": "epsilon_greedy",
+        "epsilon": 0.7,
+        "env_kwargs": env_kwargs
     }
 
     # initilize
@@ -83,10 +85,8 @@ if __name__ == "__main__":
     # where to save your results to: create this directory in advance!
     saving_path = os.getcwd() + "/progress_test"
 
-    # print("Agent: ",manager.get_agent())
-
     # do the rest!!!!
-    epochs = 3
+    epochs = 30
     buffer_size = 5000
     test_steps = 1000
     sample_size = 1000
@@ -131,25 +131,20 @@ if __name__ == "__main__":
         # data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print("optimizing...")
-        # print("sample_dict", sample_dict)
-        # rewards = sample_dict["reward"]
-        # print(rewards)
-        # print("data_dict: ", data_dict)
 
-        # TODO: iterate through your datasets
+        # iterate through your datasets
         old_table = agent.get_weights()
-        # new_table = old_table.copy()
         for s, a , r , n , d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
             print(s, a , r , n , d )
             s_x, s_y = s
             n_x, n_y = n
+            # update weights
             old_table[a, s_x, s_y] += alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
 
-        # TODO: optimize agent
-        # ToDo: calculate losses
-        dummy_losses = [np.mean(np.random.normal(size=(64, 100)), axis=0) for _ in range(1000)]
-        # ToDo update weights
-        # new_weights = agent.model.get_weights()
+        # optimize agent
+        # calculate losses
+        weights = agent.model.get_weights()
+        losses = (old_table-weights)**2
 
         # set new weights
         manager.set_agent(old_table)
@@ -157,14 +152,14 @@ if __name__ == "__main__":
         agent = manager.get_agent()
         # update aggregator
         time_steps = manager.test(test_steps)
-        manager.update_aggregator(loss=dummy_losses, time_steps=time_steps)
+        manager.update_aggregator(loss=losses, time_steps=time_steps)
         # print progress
         print(
-            f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}"
+            f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}"
         )
 
         # yeu can also alter your managers parameters
-        manager.set_epsilon(epsilon=0.99)
+        # manager.set_epsilon(epsilon=0.99)
 
         if e % saving_after == 0:
             # you can save models
@@ -175,4 +170,4 @@ if __name__ == "__main__":
     # manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")
-    manager.test(test_steps, test_episodes=10, render=True)
+    manager.test(test_steps, test_episodes=3, render=True)
