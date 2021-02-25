@@ -46,7 +46,7 @@ class TabularQ(object):
         return self.table.copy()
 
     def set_weights(self, q_vals):
-        # print("Q-vals in set_weights: ", q_vals)
+        #print("Q-vals in set_weights: ", q_vals)
         self.table = q_vals.copy()
 
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
         "width": 10,
         "action_dict": action_dict,
         "start_position": (2, 0),
-        "reward_position": (0, 3),
+        "reward_position": (9, 9),
     }
 
     env = GridWorld(**env_kwargs)
@@ -71,11 +71,11 @@ if __name__ == "__main__":
         "model": TabularQ,
         "environment": GridWorld,
         "num_parallel": 2,
-        "total_steps": 200,
+        "total_steps": 10,
         "model_kwargs": model_kwargs,
+        "env_kwargs": env_kwargs,
         "action_sampling_type": "epsilon_greedy",
-        "epsilon": 0.7,
-        "env_kwargs": env_kwargs
+        "epsilon": 0.9
     }
 
     # initilize
@@ -85,7 +85,6 @@ if __name__ == "__main__":
     # where to save your results to: create this directory in advance!
     saving_path = os.getcwd() + "/progress_test"
 
-    # do the rest!!!!
     epochs = 30
     buffer_size = 5000
     test_steps = 1000
@@ -127,24 +126,24 @@ if __name__ == "__main__":
         # sample data to optimize on from buffer
         sample_dict = manager.sample(sample_size)
         print(f"collected data for: {sample_dict.keys()}")
-        # create and batch tf datasets
-        # data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
         print("optimizing...")
 
         # iterate through your datasets
         old_table = agent.get_weights()
+        delta = 0.0
         for s, a , r , n , d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
-            print(s, a , r , n , d )
+            #print(s, a , r , n , d )
             s_x, s_y = s
             n_x, n_y = n
-            # update weights
-            old_table[a, s_x, s_y] += alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
+            local_delta = alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
+            old_table[a, s_x, s_y] += local_delta
+            delta += local_delta**2
 
         # optimize agent
         # calculate losses
-        weights = agent.model.get_weights()
-        losses = (old_table-weights)**2
+        # weights = agent.model.get_weights()
+        # losses = (old_table-weights)**2
 
         # set new weights
         manager.set_agent(old_table)
@@ -152,10 +151,10 @@ if __name__ == "__main__":
         agent = manager.get_agent()
         # update aggregator
         time_steps = manager.test(test_steps)
-        manager.update_aggregator(loss=losses, time_steps=time_steps)
+        manager.update_aggregator(loss=delta, time_steps=time_steps)
         # print progress
         print(
-            f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in losses])}   avg env steps ::: {np.mean(time_steps)}"
+            f"epoch ::: {e}  loss ::: {delta}   avg env steps ::: {np.mean(time_steps)}"
         )
 
         # yeu can also alter your managers parameters
@@ -170,4 +169,4 @@ if __name__ == "__main__":
     # manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")
-    manager.test(test_steps, test_episodes=3, render=True)
+    manager.test(test_steps, test_episodes=10, render=True)
