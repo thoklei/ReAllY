@@ -76,6 +76,21 @@ class SampleManager:
         self.data["state_new"] = []
         self.data["not_done"] = []
 
+        # specify input shape if not given
+        if not ("input_shape" in kwargs):
+            state = self.env_instance.reset()
+            state = np.expand_dims(state, axis=0)
+            kwargs["input_shape"] = state.shape
+
+        # if no model_kwargs given set to empty
+        if not ("model_kwargs") in kwargs:
+            kwargs["model_kwargs"] = {}
+
+        # initilize random weights if not given
+        if not('weights' in kwargs.keys()):
+            random_weights = self.initialize_weights(self.model, kwargs['input_shape'], kwargs['model_kwargs'])
+            kwargs['weights'] = random_weights
+
         ## some checkups
 
         assert self.num_parallel > 0, "num_parallel hast to be greater than 0!"
@@ -140,6 +155,20 @@ class SampleManager:
             self.remote_time_out = None
 
         # # TODO: print info on setup values
+
+    def initialize_weights(self, model, input_shape, model_kwargs):
+        model_inst = model(**model_kwargs)
+        if not(input_shape):
+            return model_inst.get_weights()
+        if hasattr(model, "tensorflow"):
+            assert (
+                input_shape != None
+            ), 'You have a tensorflow model with no input shape specified for weight initialization. \n Specify input_shape in "model_kwargs" or specify as False if not needed'
+        dummy = np.zeros(input_shape)
+        model_inst(dummy)
+        weights = model_inst.get_weights()
+
+        return weights
 
     def get_data(self, do_print=False, total_steps=None):
 

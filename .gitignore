@@ -15,6 +15,7 @@ progress_deep_q_target
 progress_deep_q_target_cycle
 progress_tabq
 grid_q.py
+progress_test
 *.log
 
 
