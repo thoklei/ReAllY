@@ -14,6 +14,7 @@ progress_deep_q_lunar
 progress_deep_q_target
 progress_deep_q_target_cycle
 progress_tabq
+progress_a2c
 grid_q.py
 progress_test
 *.log
