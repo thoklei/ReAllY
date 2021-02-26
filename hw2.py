@@ -34,7 +34,7 @@ class DQN(tf.keras.Model):
         ]
 
 
-    # @tf.function
+    @tf.function
     def __call__(self, state):
         for layer in self.layer_list:
             state = layer(state)
