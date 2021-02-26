@@ -17,36 +17,44 @@ DQN homework
 
 class DQN(tf.keras.Model):
 
-    def __init__(self, state_size, n_actions):
+    def __init__(self, state_size, n_actions, batch_size):
         """
         Takes the expected size of the state-vector and the number of actions.
         """
         super(DQN, self).__init__()
         self.state_size = state_size
         self.n_actions = n_actions
-        self.middle_layer_neurons = 32
+        self.middle_layer_neurons = 16
 
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(None, state_size)),
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
             tf.keras.layers.Dense(n_actions)
 
         ]
 
 
-    @tf.function
+    # @tf.function
     def __call__(self, state):
+        print("initial stat:", state)
         for layer in self.layer_list:
             state = layer(state)
+            print("State:", state)
 
         output = {}
         output["q_values"] = state
         return output
 
 
-def train(dqn, state, action, target, optimizer):
+def train(dqn, state, action, target, optim, loss_func):
+    with tf.GradientTape() as tape:
+        prediction = dqn(state)
+        loss = loss_func(target, prediction["q_values"][action])
+        gradients = tape.gradient(loss, dqn.trainable_variables)
+    optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
+    return tf.math.reduce_mean(loss)
 
 
 
@@ -56,6 +64,7 @@ if __name__ == "__main__":
         os.makedirs("logging")
 
     model_kwargs = {
+        "batch_size": 8,
         "state_size": 4,
         "n_actions": 2
     }
@@ -64,7 +73,7 @@ if __name__ == "__main__":
         "model": DQN,
         "model_kwargs": model_kwargs,
         "environment": 'CartPole-v0',
-        "num_parallel": 4,
+        "num_parallel": 2,
         "total_steps": 100,
     }
 
@@ -72,14 +81,14 @@ if __name__ == "__main__":
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    print("test before training: ")
-    manager.test(
-        max_steps=100,
-        test_episodes=10,
-        render=True,
-        do_print=True,
-        evaluation_measure="time_and_reward",
-    )
+    # print("test before training: ")
+    # manager.test(
+    #     max_steps=100,
+    #     test_episodes=10,
+    #     render=True,
+    #     do_print=True,
+    #     evaluation_measure="time_and_reward",
+    # )
 
     saving_path = os.getcwd() + "/progress_test"
 
@@ -89,8 +98,11 @@ if __name__ == "__main__":
     sample_size = 1000
     optim_batch_size = 8
     saving_after = 5
+
+    gamma = 0.95
     learning_rate = 0.0001
     optimizer = tf.keras.optimizers.Adam(learning_rate)
+    loss_function = tf.keras.losses.MSE
 
     # keys for replay buffer -> what you will need for optimization
     optim_keys = ["state", "action", "reward", "state_new", "not_done"]
@@ -134,10 +146,8 @@ if __name__ == "__main__":
         q_target = data_dict['reward'] + gamma * agent.max_q(data_dict['state_new'])
 
         # TODO: optimize agent
+        loss = train(agent.model, data_dict['state'], data_dict['action'], q_target, optimizer, loss_function)
 
-        dummy_losses = [
-            np.mean(np.random.normal(size=(64, 100)), axis=0) for _ in range(1000)
-        ]
 
         new_weights = agent.model.get_weights()
 
@@ -147,14 +157,14 @@ if __name__ == "__main__":
         agent = manager.get_agent()
         # update aggregator
         time_steps = manager.test(test_steps)
-        manager.update_aggregator(loss=dummy_losses, time_steps=time_steps)
+        manager.update_aggregator(loss=loss, time_steps=time_steps)
         # print progress
         print(
-            f"epoch ::: {e}  loss ::: {np.mean([np.mean(l) for l in dummy_losses])}   avg env steps ::: {np.mean(time_steps)}"
+            f"epoch ::: {e}  loss ::: {loss}   avg env steps ::: {np.mean(time_steps)}"
         )
 
         # yeu can also alter your managers parameters
-        manager.set_epsilon(epsilon=0.99)
+        # manager.set_epsilon(epsilon=0.99)
 
         if e % saving_after == 0:
             # you can save models
