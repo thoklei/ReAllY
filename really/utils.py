@@ -44,6 +44,7 @@ def dict_to_dict_of_datasets(data_dict, batch_size=None):
 def dict_to_dataset(data_dict, batch_size=None):
     datasets = [tf.data.Dataset.from_tensor_slices(data_dict[k]) for k in data_dict.keys()]
     ds = tf.data.Dataset.zip(tuple(datasets))
+    ds = ds.map(lambda s,a,r,sn,nd: (s, tf.cast(a, tf.int32), tf.cast(r, tf.float32), sn, nd))
     if not batch_size is None:
         ds = ds.batch(batch_size)
     return ds

@@ -34,10 +34,10 @@ class DQN(tf.keras.Model):
 
     # @tf.function
     def __call__(self, state):
-        print("initial stat:", state)
+        # print("initial stat:", state)
         for layer in self.layer_list:
             state = layer(state)
-            print("State:", state)
+            # print("State:", state)
 
         output = {}
         output["q_values"] = state
@@ -136,13 +136,15 @@ if __name__ == "__main__":
         print("optimizing...")
 
         # TODO: iterate through your datasets
-        for s, a, r, sn, nd in data_dict:
-            print("s", s, "a", a, "r", r, "sn", sn, "nd", nd)
-        # q_target = data_dict['reward'] + gamma * agent.max_q(data_dict['state_new'])
-
-        # TODO: optimize agent
-        # loss = train(agent.model, data_dict['state'], data_dict['action'], q_target, optimizer, loss_function)
         loss = 0
+        for s, a, r, sn, nd in data_dict:
+            # print("s", s, "a", a, "r", r, "sn", sn, "nd", nd)
+            print('max_q: ', agent.max_q(sn))
+            print('r: ', r)
+            q_target = r + gamma * agent.max_q(sn)
+
+            loss += train(agent.model, s, a, q_target, optimizer, loss_function)
+
         new_weights = agent.model.get_weights()
 
         # set new weights
@@ -160,9 +162,9 @@ if __name__ == "__main__":
         # yeu can also alter your managers parameters
         # manager.set_epsilon(epsilon=0.99)
 
-        if e % saving_after == 0:
-            # you can save models
-            manager.save_model(saving_path, e)
+        # if e % saving_after == 0:
+        #     # you can save models
+        #     manager.save_model(saving_path, e)
 
     # and load mmodels
     manager.load_model(saving_path)
