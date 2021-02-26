@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import tensorflow as tf
 import ray
 from really import SampleManager
 from gridworlds import GridWorld
@@ -16,22 +17,26 @@ class DQN(tf.keras.model):
         Takes the expected size of the state-vector and the number of actions.
         """
         
-        super(MyModel, self).__init__()
+        super(DQN, self).__init__()
         self.state_size = state_size
         self.n_actions = n_actions
-        self.midle_layer_neurons = 32
+        self.middle_layer_neurons = 32
 
-        self.layer1 = tf.keras.layers.Dense(state_size, activation='relu')
-        self.layer2 = tf.keras.layers.Dense(n_actions)
+        self.layer_list = [
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_size=(None, state_size)),
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
+            tf.keras.layers.Dense(n_actions)
+
+        ]
 
 
+    # @tf.function
     def __call__(self, state):
-
-        l1 = self.layer(state)
-        l2 = self.layer2(l1)
+        for layer in self.layer_list:
+            state = layer(state)
 
         output = {}
-        output["q_values"] = l2
+        output["q_values"] = state
         return output
 
 
