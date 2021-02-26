@@ -22,7 +22,7 @@ class DQN(tf.keras.model):
         self.middle_layer_neurons = 32
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_size=(None, state_size)),
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(None, state_size)),
             tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
             tf.keras.layers.Dense(n_actions)
 
