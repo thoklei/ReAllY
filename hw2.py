@@ -26,6 +26,7 @@ class DQN(tf.keras.Model):
         self.n_actions = n_actions
         self.middle_layer_neurons = 32
 
+
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(None, state_size)),
             tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
@@ -44,6 +45,9 @@ class DQN(tf.keras.Model):
         return output
 
 
+def train(dqn, state, action, target, optimizer):
+
+
 
 
 if __name__ == "__main__":
@@ -51,8 +55,14 @@ if __name__ == "__main__":
     if not os.path.exists("./logging/"):
         os.makedirs("logging")
 
+    model_kwargs = {
+        "state_size": 4,
+        "n_actions": 2
+    }
+
     kwargs = {
         "model": DQN,
+        "model_kwargs": model_kwargs,
         "environment": 'CartPole-v0',
         "num_parallel": 4,
         "total_steps": 100,
@@ -79,6 +89,8 @@ if __name__ == "__main__":
     sample_size = 1000
     optim_batch_size = 8
     saving_after = 5
+    learning_rate = 0.0001
+    optimizer = tf.keras.optimizers.Adam(learning_rate)
 
     # keys for replay buffer -> what you will need for optimization
     optim_keys = ["state", "action", "reward", "state_new", "not_done"]
@@ -116,6 +128,10 @@ if __name__ == "__main__":
         print("optimizing...")
 
         # TODO: iterate through your datasets
+        for key in data_dict:
+            print("data:", data_dict[key])
+
+        q_target = data_dict['reward'] + gamma * agent.max_q(data_dict['state_new'])
 
         # TODO: optimize agent
 
