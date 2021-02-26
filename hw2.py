@@ -1,4 +1,4 @@
-import os 
+import os
 import gym
 import numpy as np
 import tensorflow as tf
@@ -6,9 +6,8 @@ import ray
 from really import SampleManager
 from gridworlds import GridWorld
 from really.utils import (
-    dict_to_dict_of_datasets,
+    dict_to_dataset,
 )  # convenient function for you to create tensorflow datasets
-
 
 """
 DQN homework
@@ -26,14 +25,12 @@ class DQN(tf.keras.Model):
         self.n_actions = n_actions
         self.middle_layer_neurons = 16
 
-
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
             tf.keras.layers.Dense(n_actions)
 
         ]
-
 
     # @tf.function
     def __call__(self, state):
@@ -55,7 +52,6 @@ def train(dqn, state, action, target, optim, loss_func):
     optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
     return tf.math.reduce_mean(loss)
-
 
 
 if __name__ == "__main__":
@@ -135,20 +131,18 @@ if __name__ == "__main__":
         sample_dict = manager.sample(sample_size)
         print(f"collected data for: {sample_dict.keys()}")
         # create and batch tf datasets
-        data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
+        data_dict = dict_to_dataset(sample_dict, batch_size=optim_batch_size)
 
         print("optimizing...")
 
         # TODO: iterate through your datasets
-        for key in data_dict:
-            print("data:", data_dict[key])
-
-        q_target = data_dict['reward'] + gamma * agent.max_q(data_dict['state_new'])
+        for s, a, r, sn, nd in data_dict:
+            print("s", s, "a", a, "r", r, "sn", sn, "nd", nd)
+        # q_target = data_dict['reward'] + gamma * agent.max_q(data_dict['state_new'])
 
         # TODO: optimize agent
-        loss = train(agent.model, data_dict['state'], data_dict['action'], q_target, optimizer, loss_function)
-
-
+        # loss = train(agent.model, data_dict['state'], data_dict['action'], q_target, optimizer, loss_function)
+        loss = 0
         new_weights = agent.model.get_weights()
 
         # set new weights
@@ -175,4 +169,3 @@ if __name__ == "__main__":
     print("done")
     print("testing optimized agent")
     manager.test(test_steps, test_episodes=10, render=True)
-

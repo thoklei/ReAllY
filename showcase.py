@@ -74,7 +74,7 @@ if __name__ == "__main__":
     test_steps = 1000
     epochs = 20
     sample_size = 1000
-    optim_batch_size = 8
+    optim_batch_size = 32
     saving_after = 5
 
     # keys for replay buffer -> what you will need for optimization

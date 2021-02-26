@@ -20,7 +20,6 @@ def discount_cumsum(x, discount):
 
 
 def dict_to_dataset(data_dict, batch_size=None):
-
     datasets = []
     for k in dict.keys():
         datasets.append(tf.data.Dataset.from_tensor_slices(data_dict[k]))
@@ -33,7 +32,6 @@ def dict_to_dataset(data_dict, batch_size=None):
 
 
 def dict_to_dict_of_datasets(data_dict, batch_size=None):
-
     dataset_dict = {}
     for k in data_dict.keys():
         dataset_dict[k] = tf.data.Dataset.from_tensor_slices(data_dict[k])
@@ -41,6 +39,14 @@ def dict_to_dict_of_datasets(data_dict, batch_size=None):
             dataset_dict[k] = dataset_dict[k].batch(batch_size)
 
     return dataset_dict
+
+
+def dict_to_dataset(data_dict, batch_size=None):
+    datasets = [tf.data.Dataset.from_tensor_slices(data_dict[k]) for k in data_dict.keys()]
+    ds = tf.data.Dataset.zip(tuple(datasets))
+    if not batch_size is None:
+        ds = ds.batch(batch_size)
+    return ds
 
 
 def all_subdirs_of(b="."):
