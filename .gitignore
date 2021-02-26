@@ -22,6 +22,8 @@ progress_test
 # Byte-compiled / optimized / DLL files
 really/__pycache__
 __pycache__/
+gridworlds/gridworlds/__pycache__/
+gridworlds/gridworlds/envs/__pycache__/
 *.py[cod]
 *$py.class
 
