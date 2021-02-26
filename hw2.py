@@ -21,7 +21,6 @@ class DQN(tf.keras.Model):
         """
         Takes the expected size of the state-vector and the number of actions.
         """
-        
         super(DQN, self).__init__()
         self.state_size = state_size
         self.n_actions = n_actions
@@ -44,12 +43,6 @@ class DQN(tf.keras.Model):
         output["q_values"] = state
         return output
 
-
-    def get_weights(self):
-        return None
-
-    def set_weights(self, q_vals):
-        pass
 
 
 
