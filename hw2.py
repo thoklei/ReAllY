@@ -73,8 +73,8 @@ def train(dqn, state, action, target, optim, loss_func):
         relevant_qvals = tf.boolean_mask(prediction["q-values"], relevant_actions_mask)
 
         loss = loss_func(target, relevant_qvals)
-        out = tf.gather_nd(prediction["q_values"], tf.constant(a))
-        loss = loss_func(target, out)
+        # out = tf.gather_nd(prediction["q_values"], tf.constant(a))
+        # loss = loss_func(target, out)
         gradients = tape.gradient(loss, dqn.trainable_variables)
     optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
