@@ -47,7 +47,12 @@ class DQN(tf.keras.Model):
 def train(dqn, state, action, target, optim, loss_func):
     with tf.GradientTape() as tape:
         prediction = dqn(state)
-        loss = loss_func(target, prediction["q_values"][action])
+
+        # we want to make backprop only on the actions we took.
+        relevant_actions_mask = tf.concat([1-action, action], axis=1)
+        relevant_qvals = tf.boolean_mask(prediction["q-values"], relevant_actions_mask)
+
+        loss = loss_func(target, relevant_qvals)
         gradients = tape.gradient(loss, dqn.trainable_variables)
     optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
@@ -113,7 +118,7 @@ if __name__ == "__main__":
 
     # initial testing:
     print("test before training: ")
-    manager.test(test_steps, do_print=True, render=True)
+    manager.test(test_steps, do_print=True, render=False)
 
     # get initial agent
     agent = manager.get_agent()
@@ -138,9 +143,9 @@ if __name__ == "__main__":
         # TODO: iterate through your datasets
         loss = 0
         for s, a, r, sn, nd in data_dict:
-            # print("s", s, "a", a, "r", r, "sn", sn, "nd", nd)
-            print('max_q: ', agent.max_q(sn))
-            print('r: ', r)
+            # print("s", s.shape, "a", a.shape, "r", r.shape, "sn", sn.shape, "nd", nd.shape)
+            # print('max_q: ', agent.max_q(sn))
+            # print('r: ', r)
             q_target = r + gamma * agent.max_q(sn)
 
             loss += train(agent.model, s, a, q_target, optimizer, loss_function)
@@ -166,7 +171,7 @@ if __name__ == "__main__":
         #     # you can save models
         #     manager.save_model(saving_path, e)
 
-    # and load mmodels
+    # and load models
     manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")
