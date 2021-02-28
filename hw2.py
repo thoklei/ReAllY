@@ -27,11 +27,11 @@ class DQN(tf.keras.Model):
         super(DQN, self).__init__()
         self.state_size = state_size
         self.n_actions = n_actions
-        self.middle_layer_neurons = 16
+        self.middle_layer_neurons = 32
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)),
+            #tf.keras.layers.Dense(self.middle_layer_neurons, activation="tanh"),
             tf.keras.layers.Dense(n_actions)]
 
     @tf.function
@@ -63,7 +63,7 @@ def train(dqn, state, action, target, optim, loss_func):
     """
     with tf.GradientTape() as tape:
         prediction = dqn(state)
-        # we want to make backprop only on the actions we took.
+        # we want to run backprop only on the actions we took.
         relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
         loss = loss_func(target, relevant_qvals)
         gradients = tape.gradient(loss, dqn.trainable_variables)
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         os.makedirs("logging")
 
     model_kwargs = {
-        "batch_size": 8,
+        "batch_size": 32,
         "state_size": 4,
         "n_actions": 2
     }
@@ -96,13 +96,12 @@ if __name__ == "__main__":
     manager = SampleManager(**kwargs)
 
     # print("test before training: ")
-    # manager.test(
-    #     max_steps=100,
-    #     test_episodes=10,
-    #     render=True,
-    #     do_print=True,
-    #     evaluation_measure="time_and_reward",
-    # )
+    manager.test(
+        max_steps=100,
+        test_episodes=3,
+        render=True,
+        evaluation_measure="time_and_reward",
+    )
 
     #######################
     ## <Hyperparameters> ##
@@ -118,7 +117,7 @@ if __name__ == "__main__":
 
     gamma = 0.8
     learning_rate = 0.01
-    optimizer = tf.keras.optimizers.Adam()
+    optimizer = tf.keras.optimizers.Adam #SGD(learning_rate, momentum=0.8)
     loss_function = tf.keras.losses.MSE
 
     ########################
@@ -163,13 +162,15 @@ if __name__ == "__main__":
 
         # update with new weights
         new_weights = agent.model.get_weights()
+        
+        agent.set_weights(new_weights)
         manager.set_agent(new_weights)
 
         # get new weights
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps = manager.test(test_steps)
+        time_steps = manager.test(test_steps, render=False)
         manager.update_aggregator(loss=loss, time_steps=time_steps)
         print(f"epoch ::: {e}  loss ::: {np.round(loss.numpy(), 4)}   avg env steps ::: {np.mean(time_steps)}")
 
