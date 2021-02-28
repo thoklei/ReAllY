@@ -8,13 +8,13 @@ from really import SampleManager
 from gridworlds import GridWorld
 from really.utils import (
     dict_to_dataset,
-) 
+)
 
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-class DQN(tf.keras.Model):
 
+class DQN(tf.keras.Model):
     def __init__(self, state_size, n_actions, batch_size):
         """
         Constructs a Deep Q-Network.
@@ -34,8 +34,7 @@ class DQN(tf.keras.Model):
             tf.keras.layers.Dense(self.middle_layer_neurons, activation="relu"),
             tf.keras.layers.Dense(n_actions)]
 
-
-    # @tf.function
+    @tf.function
     def __call__(self, state):
         """
         Calculates the Q-values for all actions for a given state.
@@ -50,31 +49,23 @@ class DQN(tf.keras.Model):
         return output
 
 
+# @tf.function
 def train(dqn, state, action, target, optim, loss_func):
     """
     Trains the deep Q-Network.
 
     dqn: the network
-    state: the state in which an action was taken
-    action: the selected action
+    state: the state in which the action was taken
+    action: the taken action
     target: the q-values according to the Watkins-Formula
     optim: the optimizer to be used (e.g. Adam)
-    loss_func: the loss function to be used (MSE)
+    loss_func: the loss function to be used (e.g. MSE)
     """
-    
-    # converting actions into usable indices
-    a = np.array([[i, val] for i, val in enumerate(action.numpy())])
-
     with tf.GradientTape() as tape:
         prediction = dqn(state)
-
         # we want to make backprop only on the actions we took.
-        relevant_actions_mask = tf.concat([1-action, action], axis=1)
-        relevant_qvals = tf.boolean_mask(prediction["q-values"], relevant_actions_mask)
-
+        relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
         loss = loss_func(target, relevant_qvals)
-        # out = tf.gather_nd(prediction["q_values"], tf.constant(a))
-        # loss = loss_func(target, out)
         gradients = tape.gradient(loss, dqn.trainable_variables)
     optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
@@ -113,19 +104,26 @@ if __name__ == "__main__":
     #     evaluation_measure="time_and_reward",
     # )
 
+    #######################
+    ## <Hyperparameters> ##
+    #######################
     saving_path = os.getcwd() + "/progress_test"
 
-    buffer_size = 5000
+    buffer_size = 10000
     test_steps = 1000
     epochs = 20
     sample_size = 1000
-    optim_batch_size = 8
+    optim_batch_size = 32
     saving_after = 5
 
-    gamma = 0.95
+    gamma = 0.8
     learning_rate = 0.01
     optimizer = tf.keras.optimizers.Adam()
     loss_function = tf.keras.losses.MSE
+
+    ########################
+    ## </Hyperparameters> ##
+    ########################
 
     # keys for replay buffer -> what you will need for optimization
     optim_keys = ["state", "action", "reward", "state_new", "not_done"]
@@ -157,15 +155,13 @@ if __name__ == "__main__":
         data_dict = dict_to_dataset(sample_dict, batch_size=optim_batch_size)
 
         loss = 0
-        for s, a, r, sn, nd in data_dict:
-            # print("s", s.shape, "a", a.shape, "r", r.shape, "sn", sn.shape, "nd", nd.shape)
-            # print('max_q: ', agent.max_q(sn))
-            # print('r: ', r)
-            q_target = r + gamma * agent.max_q(sn)
-            loss += train(agent.model, s, a, q_target, optimizer, loss_function)
+        for state, action, reward, state_next, not_done in data_dict:
+            # calculate the target with the Watkins-Formula
+            q_target = reward + gamma * agent.max_q(state_next)
+            # use backpropagation and count up the losses
+            loss += train(agent.model, state, action, q_target, optimizer, loss_function)
 
-
-        # set new weights
+        # update with new weights
         new_weights = agent.model.get_weights()
         manager.set_agent(new_weights)
 
@@ -175,17 +171,12 @@ if __name__ == "__main__":
         # update aggregator
         time_steps = manager.test(test_steps)
         manager.update_aggregator(loss=loss, time_steps=time_steps)
-
-        print(f"epoch ::: {e}  loss ::: {np.round(loss,4)}   avg env steps ::: {np.mean(time_steps)}")
-
-        # you can also alter your managers parameters
-        # manager.set_epsilon(epsilon=0.99)
+        print(f"epoch ::: {e}  loss ::: {np.round(loss.numpy(), 4)}   avg env steps ::: {np.mean(time_steps)}")
 
         # if e % saving_after == 0:
         #     manager.save_model(saving_path, e)
 
-
-    #manager.load_model(saving_path)
+    # manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")
-    manager.test(test_steps, test_episodes=10, render=True)
+    manager.test(1000, test_episodes=100, render=True, do_print=True)
