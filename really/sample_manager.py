@@ -333,7 +333,7 @@ class SampleManager:
             rewards = []
         else:
             print(
-                f"unrceognized evaluation measure: {evaluation_measure} \n Change to 'time', 'reward' or 'time_and_reward'."
+                f"unrecognized evaluation measure: {evaluation_measure}\n Change to 'time', 'reward' or 'time_and_reward'."
             )
             raise ValueError
 
