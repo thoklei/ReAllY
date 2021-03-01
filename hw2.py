@@ -7,7 +7,7 @@ import ray
 from really import SampleManager
 from gridworlds import GridWorld
 from really.utils import (
-    dict_to_dataset,
+    dict_to_dataset, dict_to_dict_of_datasets
 )
 
 logging.disable(logging.WARNING)
@@ -28,11 +28,13 @@ class DQN(tf.keras.Model):
         self.state_size = state_size
         self.n_actions = n_actions
         self.middle_layer_neurons = 32
+        self.second_layer_neurons = 16
 
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)),
-            #tf.keras.layers.Dense(self.middle_layer_neurons, activation="tanh"),
-            tf.keras.layers.Dense(n_actions)]
+            tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh'),
+            tf.keras.layers.Dense(n_actions, use_bias=False)]
+
 
     @tf.function
     def __call__(self, state):
@@ -49,6 +51,21 @@ class DQN(tf.keras.Model):
         return output
 
 
+def train_new(agent, state, action, target, optim, loss_func):
+
+    with tf.GradientTape() as tape:
+
+        out = agent.q_val(state,action)
+        
+        loss = loss_func(target, out)
+
+        gradients = tape.gradient(loss, agent.model.trainable_variables)
+        optim.apply_gradients(zip(gradients, agent.model.trainable_variables))
+
+    return loss
+
+
+
 # @tf.function
 def train(dqn, state, action, target, optim, loss_func):
     """
@@ -61,15 +78,22 @@ def train(dqn, state, action, target, optim, loss_func):
     optim: the optimizer to be used (e.g. Adam)
     loss_func: the loss function to be used (e.g. MSE)
     """
+
+    a = np.array([[i, val] for i, val in enumerate(action.numpy())])
+
     with tf.GradientTape() as tape:
         prediction = dqn(state)
         # we want to run backprop only on the actions we took.
-        relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
-        loss = loss_func(target, relevant_qvals)
-        gradients = tape.gradient(loss, dqn.trainable_variables)
-    optim.apply_gradients(zip(gradients, dqn.trainable_variables))
+        #relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
+        #loss = loss_func(target, relevant_qvals)
 
-    return tf.math.reduce_mean(loss)
+        out = tf.gather_nd(prediction["q_values"], tf.constant(a))
+        loss = loss_func(target, out)
+
+        gradients = tape.gradient(loss, dqn.trainable_variables)
+        optim.apply_gradients(zip(gradients, dqn.trainable_variables))
+
+    return loss
 
 
 if __name__ == "__main__":
@@ -87,21 +111,14 @@ if __name__ == "__main__":
         "model": DQN,
         "model_kwargs": model_kwargs,
         "environment": 'CartPole-v0',
-        "num_parallel": 2,
-        "total_steps": 100,
+        "num_parallel": 4,
+        "total_steps": 100
     }
 
     # initialize
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    # print("test before training: ")
-    manager.test(
-        max_steps=100,
-        test_episodes=3,
-        render=True,
-        evaluation_measure="time_and_reward",
-    )
 
     #######################
     ## <Hyperparameters> ##
@@ -110,14 +127,14 @@ if __name__ == "__main__":
 
     buffer_size = 10000
     test_steps = 1000
-    epochs = 20
-    sample_size = 1000
+    epochs = 31
+    sample_size = 3000
     optim_batch_size = 32
-    saving_after = 5
+    saving_after = 10
 
-    gamma = 0.8
-    learning_rate = 0.01
-    optimizer = tf.keras.optimizers.Adam #SGD(learning_rate, momentum=0.8)
+    gamma = 0.9
+    learning_rate = 0.00001
+    optimizer = tf.keras.optimizers.Adam() #SGD(learning_rate, momentum=0.8)
     loss_function = tf.keras.losses.MSE
 
     ########################
@@ -136,11 +153,14 @@ if __name__ == "__main__":
     )
 
     # initial testing:
-    # print("test before training: ")
-    # manager.test(test_steps, do_print=True, render=True)
+    print("Establishing baseline.")
+    manager.test(test_steps, test_episodes=10, do_print=True, render=True)
+
+    print("Training the agent.")
 
     # get initial agent
     agent = manager.get_agent()
+    #agent.model.build(optim_batch_size)
 
     for e in range(epochs):
 
@@ -148,17 +168,18 @@ if __name__ == "__main__":
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        sample_dict = manager.sample(sample_size)
+        sample_dict = manager.sample(sample_size, from_buffer=False)
 
         # create and batch tf datasets
-        data_dict = dict_to_dataset(sample_dict, batch_size=optim_batch_size)
+        data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
+        
+        loss = 0.0
+        for state, action, reward, state_next, nd in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done']):
 
-        loss = 0
-        for state, action, reward, state_next, not_done in data_dict:
-            # calculate the target with the Watkins-Formula
-            q_target = reward + gamma * agent.max_q(state_next)
+            q_target = tf.cast(nd, tf.float64) * (tf.cast(reward,tf.float64) + tf.cast(gamma * agent.max_q(state_next), tf.float64))
             # use backpropagation and count up the losses
-            loss += train(agent.model, state, action, q_target, optimizer, loss_function)
+            loss += train_new(agent, state, action, q_target, optimizer, loss_function)
+
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -172,12 +193,18 @@ if __name__ == "__main__":
         # update aggregator
         time_steps = manager.test(test_steps, render=False)
         manager.update_aggregator(loss=loss, time_steps=time_steps)
-        print(f"epoch ::: {e}  loss ::: {np.round(loss.numpy(), 4)}   avg env steps ::: {np.mean(time_steps)}")
+
+        print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
+
+        # Annealing epsilon
+        # new_epsilon = min(1, 1.01 * manager.kwargs['epsilon'])
+        # manager.set_epsilon(new_epsilon)
 
         # if e % saving_after == 0:
         #     manager.save_model(saving_path, e)
 
     # manager.load_model(saving_path)
-    print("done")
-    print("testing optimized agent")
+    print("Done.")
+    print("Testing optimized agent.")
+
     manager.test(1000, test_episodes=100, render=True, do_print=True)
