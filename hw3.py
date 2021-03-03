@@ -87,16 +87,11 @@ class ModelWrapper(tf.keras.Model):
 def train_pi(action, state, r_sum, value, opt):
     
     with tf.GradientTape() as tape:
-
         
         state = np.array(state)
         state = np.reshape(state, (1,8))
 
-        print("State: ", state)
-
         mue = tf.cast(agent.model.pi_network(state), tf.float64)
-        # dist = tf.contrib.distributions.Normal(mue, agent.model.sigma)
-        # prob = dist.pdf(action)
         
         tfd = tfp.distributions
         dist = tfd.Normal(loc=mue, scale=tf.cast(agent.model.sigma, tf.float64))
@@ -104,21 +99,12 @@ def train_pi(action, state, r_sum, value, opt):
 
         target = tf.math.log(prob)
 
-        print("r_sum: ", r_sum)
-        print("value: ", value)
-        print("target: ", target)
+        factor = r_sum - tf.cast(tf.squeeze(value), tf.float64)
 
-        factor = tf.cast((r_sum - tf.cast(tf.squeeze(value), tf.float64)), tf.float64)
+        gradients = tape.gradient([factor * target], agent.model.pi_network.trainable_variables)
 
-        print("Factor: ", factor)
-
-        gradients = tf.cast(tape.gradient(target, agent.model.pi_network.trainable_variables), tf.float64)
-
-        print("Gradients: ", gradients)
-        factored_gradients = factor * gradients
         opt.apply_gradients(zip(-1 * gradients, agent.model.pi_network.trainable_variables))
 
-    return loss
 
 def train_v(agent, r_sum, state, opt):
 
@@ -172,7 +158,7 @@ if __name__ == "__main__":
 
     buffer_size = 30000
     test_steps = 250
-    epochs = 25
+    epochs = 10
     sample_size = 4000
     optim_batch_size = 1
     saving_after = 10
@@ -207,6 +193,7 @@ if __name__ == "__main__":
     agent = manager.get_agent()
     #agent.model.build(optim_batch_size)
 
+    agent.model.build((1,8))
     for e in range(epochs):
 
         # data = manager.get_data()
@@ -226,9 +213,6 @@ if __name__ == "__main__":
         
         end, terminal = get_end(sample_dict['not_done'])
 
-        #entries = ['state', 'action', 'reward', 'state_new', 'monte_carlo']
-
-        #data = [data_dict[val] for val in entries]
 
         states = sample_dict['state'][:end]
         actions = sample_dict['action'][:end]
@@ -246,11 +230,8 @@ if __name__ == "__main__":
             value = agent.model(tf.expand_dims(s, axis=0))['value_estimate']
             old_mcr = mc_r
 
-            loss_pi = train_pi(a, s, r_sum, value, None)
+            train_pi(a, s, r_sum, value, optimizer)
             loss_v = train_v(agent, r_sum, s, optimizer)
-
-            print("value loss: ", loss_v)
-            print("pi loss: ", loss_pi)
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -262,10 +243,10 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps = manager.test(test_steps, render=False)
-        manager.update_aggregator(loss=step, time_steps=time_steps)
+        time_steps = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
+        manager.update_aggregator(loss=loss_v, time_steps=time_steps)
 
-        #print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
+        print(f"epoch ::: {e}  loss ::: {loss_v}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
         # if e % 5 == 0: 
