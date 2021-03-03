@@ -94,6 +94,7 @@ if __name__ == "__main__":
 
     # get initial agent
     agent = manager.get_agent()
+    print(agent.model.trainable_variables)
 
     for e in range(epochs):
 

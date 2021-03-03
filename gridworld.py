@@ -41,8 +41,8 @@ if __name__ == "__main__":
     action_dict = {0: "UP", 1: "RIGHT", 2: "DOWN", 3: "LEFT"}
 
     env_kwargs = {
-        "height": 3,
-        "width": 4,
+        "height": 10,
+        "width": 10,
         "action_dict": action_dict,
         "start_position": (2, 0),
         "reward_position": (0, 3),
@@ -58,7 +58,8 @@ if __name__ == "__main__":
         "environment": GridWorld,
         "num_parallel": 2,
         "total_steps": 100,
-        "model_kwargs": model_kwargs
+        "model_kwargs": model_kwargs,
+        "env_kwargs" : env_kwargs
         # and more
     }
 
