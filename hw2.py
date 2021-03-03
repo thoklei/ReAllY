@@ -31,8 +31,8 @@ class DQN(tf.keras.Model):
         self.second_layer_neurons = 16
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh'),
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
+            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
             tf.keras.layers.Dense(n_actions, use_bias=False)]
 
 
@@ -55,10 +55,8 @@ def train_new(agent, state, action, target, optim, loss_func):
 
     with tf.GradientTape() as tape:
 
-        out = agent.q_val(state,action)
-        
+        out = agent.q_val(state, action)
         loss = loss_func(target, out)
-
         gradients = tape.gradient(loss, agent.model.trainable_variables)
         optim.apply_gradients(zip(gradients, agent.model.trainable_variables))
 
@@ -112,7 +110,9 @@ if __name__ == "__main__":
         "model_kwargs": model_kwargs,
         "environment": 'CartPole-v0',
         "num_parallel": 4,
-        "total_steps": 100
+        "total_steps": 400,
+        "action_sampling_type": "epsilon_greedy",
+        "epsilon": 0.8
     }
 
     # initialize
@@ -125,16 +125,16 @@ if __name__ == "__main__":
     #######################
     saving_path = os.getcwd() + "/progress_test"
 
-    buffer_size = 10000
-    test_steps = 1000
-    epochs = 31
-    sample_size = 3000
+    buffer_size = 30000
+    test_steps = 250
+    epochs = 25
+    sample_size = 4000
     optim_batch_size = 32
     saving_after = 10
 
     gamma = 0.9
-    learning_rate = 0.00001
-    optimizer = tf.keras.optimizers.Adam() #SGD(learning_rate, momentum=0.8)
+    learning_rate = 0.001
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate) #SGD(learning_rate, momentum=0.8)
     loss_function = tf.keras.losses.MSE
 
     ########################
@@ -176,7 +176,7 @@ if __name__ == "__main__":
         loss = 0.0
         for state, action, reward, state_next, nd in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done']):
 
-            q_target = tf.cast(nd, tf.float64) * (tf.cast(reward,tf.float64) + tf.cast(gamma * agent.max_q(state_next), tf.float64))
+            q_target = tf.cast(reward,tf.float64) + (tf.cast(nd, tf.float64) * tf.cast(gamma * agent.max_q(state_next), tf.float64))
             # use backpropagation and count up the losses
             loss += train_new(agent, state, action, q_target, optimizer, loss_function)
 
@@ -197,8 +197,8 @@ if __name__ == "__main__":
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
-        # new_epsilon = min(1, 1.01 * manager.kwargs['epsilon'])
-        # manager.set_epsilon(new_epsilon)
+        new_epsilon = 0.9 * manager.kwargs['epsilon']
+        manager.set_epsilon(new_epsilon)
 
         # if e % saving_after == 0:
         #     manager.save_model(saving_path, e)
@@ -207,4 +207,4 @@ if __name__ == "__main__":
     print("Done.")
     print("Testing optimized agent.")
 
-    manager.test(1000, test_episodes=100, render=True, do_print=True)
+    manager.test(100, test_episodes=10, render=True, do_print=True)
