@@ -107,9 +107,11 @@ if __name__ == "__main__":
     kwargs = {
         "model": Pi,
         "model_kwargs": model_kwargs,
+        "returns": ['monte_carlo'], 
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 1,
-        "total_steps": 7,
+        "total_steps": 20, # how many total steps we do
+        "num_steps": 20,
         "action_sampling_type": "continous_normal_diagonal",
         "epsilon": 0.9
     }
@@ -153,7 +155,7 @@ if __name__ == "__main__":
 
     # initial testing:
     print("Establishing baseline.")
-    manager.test(test_steps, test_episodes=3, do_print=True, render=True)
+   # manager.test(test_steps, test_episodes=3, do_print=True, render=True)
 
     print("Training the agent.")
 
@@ -167,19 +169,17 @@ if __name__ == "__main__":
         # manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        sample_dict = manager.sample(1, from_buffer=False)
+        sample_dict = manager.sample(1, from_buffer=False) # 
 
-        print(sample_dict)
+        #print(sample_dict)
 
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
-        
+
         step = 0
-        for state, action, reward, state_next, nd in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done']):
-            
-            step += 1
+        for state, action, reward, state_next, nd, mc in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done'], data_dict['monte_carlo']):
+            print("MC rewards: ", mc)
         data_dict = None
-        print("step: ", step)
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
         # update aggregator
         time_steps = manager.test(test_steps, render=False)
-        manager.update_aggregator(loss=loss, time_steps=time_steps)
+        manager.update_aggregator(loss=step, time_steps=time_steps)
 
         #print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
