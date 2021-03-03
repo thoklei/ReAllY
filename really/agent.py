@@ -8,6 +8,7 @@ import random
 from scipy.stats import norm, lognorm
 
 
+
 class Agent:
     """
     Agent wrapper:
@@ -143,15 +144,19 @@ class Agent:
         x = tf.gather(q_values, actions, batch_dims=1)
         return x
 
-    def flowing_log_prob(self, state, action):
+    def flowing_log_prob(self, state, action, return_entropy=True):
         output = {}
         action = tf.cast(action, dtype=tf.float32)
         network_out = self.model(state)
         if self.action_sampling_type == 'continous_normal_diagonal':
             mus, sigmas = network_out["mu"], network_out["sigma"]
             dist = tf.compat.v1.distributions.Normal(mus, sigmas)
-            log_prob = tf.reduce_sum(dist.log_prob(action), axis=-1)
-            return log_prob
+            log_prob = dist.log_prob(action)
+            if return_entropy:
+                firs_step = tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas))
+                second_step = tf.constant(0.5, dtype=tf.float32) * tf.math.log(2*tf.constant(np.pi, dtype=tf.float32))
+                entropy = firs_step * second_step
+            return log_prob, entropy
         else:
             print(f"flowing log probabilities not yet implemented for sampling type {self.action_sampling_type}")
             raise NotImplemented
