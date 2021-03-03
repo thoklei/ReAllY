@@ -11,11 +11,6 @@ from really.utils import discount_cumsum
 from ray.tune.registry import register_env
 
 
-def env_creator(dict):
-    return GridWorld()  # return an env instance
-
-
-#
 @ray.remote
 class RunnerBox:
     """
@@ -56,17 +51,8 @@ class RunnerBox:
         kwargs.pop('discrete_env')
 
         # initialize default data agg
-        data_agg = {}
-        data_agg["action"] = []
-        data_agg["state"] = []
-        data_agg["reward"] = []
-        data_agg["state_new"] = []
-        data_agg["not_done"] = []
 
-        # initilize optional returns
         for key in self.returns:
-            data_agg[key] = []
-
             if key == "log_prob":
                 self.return_log_prob = True
             if key == "value_estimate":
@@ -81,13 +67,31 @@ class RunnerBox:
 
         self.agent = agent(model, **kwargs)
         self.agent_kwargs = kwargs
+        self.clear_box()
+
+
+    def clear_box(self):
+        data_agg = {}
+        data_agg["action"] = []
+        data_agg["state"] = []
+        data_agg["reward"] = []
+        data_agg["state_new"] = []
+        data_agg["not_done"] = []
+
+        # initilize optional returns
+        for key in self.returns:
+            data_agg[key] = []
+
         self.data_agg = data_agg
+
 
     def run_n_steps(self, num_steps, max_env=None):
         import tensorflow as tf
 
         if max_env is not None:
             self.env.__num_steps = max_env
+
+        self.clear_box()
         state = self.env.reset()
         step = 0
 
@@ -139,6 +143,7 @@ class RunnerBox:
 
         if max_env is not None:
             self.env.__num_steps = max_env
+
         state = self.env.reset()
         for e in range(num_episodes):
             done = False
@@ -148,7 +153,7 @@ class RunnerBox:
                 agent_out = self.agent.act_experience(
                     np.expand_dims(state, axis=0), self.return_log_prob
                 )
-    
+
                 # S
                 self.data_agg["state"].append(state)
                 # A
