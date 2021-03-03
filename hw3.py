@@ -14,42 +14,6 @@ logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
-class ValueNetwork(tf.keras.Model):
-
-    def __init__(self, state_size, batch_size):
-        """
-        Value Estimator for A2C.
-
-        state_size: dimension of the state-vector
-        batch_size: size of batches during training
-        """
-
-        super(ValueNetwork, self).__init__()
-        self.state_size = state_size
-        self.middle_layer_neurons = 32
-        self.second_layer_neurons = 16
-
-        self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
-            tf.keras.layers.Dense(1)]
-
-    @tf.function
-    def __call__(self, state):
-        """
-        Calculates the value estimate for a given state.
-
-        state: the state vector
-        """
-        for layer in self.layer_list:
-            state = layer(state)
-
-        output = {}
-        output["value_estimate"] = state
-        return output
-
-
-
 class Pi(tf.keras.Model):
 
     def __init__(self, state_size, batch_size):
@@ -59,19 +23,30 @@ class Pi(tf.keras.Model):
         self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
-        self.layer_list = [
+        self.layer_list_pi = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
             tf.keras.layers.Dense(2)]
 
+        self.layer_list_v = [
+            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
+            tf.keras.layers.Dense(1)]
+
+
     def call(self, state):
 
-        for layer in self.layer_list:
+        state2 = state
+
+        for layer in self.layer_list_pi:
             state = layer(state)
+
+        for layer in self.layer_list_v:
+            state2 = layer(state2)    
 
         output = {}
         output["mu"] = state
         output["sigma"] = tf.constant(0.1)
+        output["value_estimate"] = state2
 
         return output
 
@@ -125,7 +100,7 @@ if __name__ == "__main__":
         os.makedirs("logging")
 
     model_kwargs = {
-        "batch_size": 32,
+        "batch_size": 1,
         "state_size": 8,
     }
 
@@ -133,7 +108,7 @@ if __name__ == "__main__":
         "model": Pi,
         "model_kwargs": model_kwargs,
         "environment": 'LunarLanderContinuous-v2',
-        "num_parallel": 4,
+        "num_parallel": 1,
         "total_steps": 7,
         "action_sampling_type": "continous_normal_diagonal",
         "epsilon": 0.9
@@ -153,7 +128,7 @@ if __name__ == "__main__":
     test_steps = 250
     epochs = 25
     sample_size = 4000
-    optim_batch_size = 32
+    optim_batch_size = 1
     saving_after = 10
 
     gamma = 0.9
@@ -188,21 +163,23 @@ if __name__ == "__main__":
 
     for e in range(epochs):
 
-        data = manager.get_data()
-        manager.store_in_buffer(data)
+        # data = manager.get_data()
+        # manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
         sample_dict = manager.sample(1, from_buffer=False)
 
+        print(sample_dict)
+
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
         
-        loss = 0
+        step = 0
         for state, action, reward, state_next, nd in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done']):
             
-            loss += 1
+            step += 1
         data_dict = None
-        print("step: ", loss)
+        print("step: ", step)
 
         # update with new weights
         new_weights = agent.model.get_weights()
