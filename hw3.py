@@ -3,7 +3,7 @@ import logging
 import gym
 import numpy as np
 import tensorflow as tf
-#import tensorflow_probability as tfp
+import tensorflow_probability as tfp
 import ray
 from really import SampleManager
 from gridworlds import GridWorld
@@ -21,13 +21,13 @@ class Pi(tf.keras.Model):
 
         super(Pi, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 32
+        self.middle_layer_neurons = 28
         self.second_layer_neurons = 16
 
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
-            tf.keras.layers.Dense(2, use_bias=False)]
+            tf.keras.layers.Dense(2, use_bias=False, activation='tanh')]
 
 
     def call(self, state):
@@ -44,7 +44,6 @@ class ValueEstimator(tf.keras.Model):
 
         super(ValueEstimator, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
         self.layer_list = [
@@ -89,17 +88,34 @@ def train_pi(action, state, r_sum, value, opt):
     
     with tf.GradientTape() as tape:
 
-        # mue = agent.model.pi_network(tf.expand_dims(state, axis=0))
+        
+        state = np.array(state)
+        state = np.reshape(state, (1,8))
+
+        print("State: ", state)
+
+        mue = tf.cast(agent.model.pi_network(state), tf.float64)
         # dist = tf.contrib.distributions.Normal(mue, agent.model.sigma)
         # prob = dist.pdf(action)
         
-        #tfd = tfp.distributions
-        #dist = tfd.Normal(loc=mue, scale=agent.model.sigma)
-        #prob = dist.cdf(action)
+        tfd = tfp.distributions
+        dist = tfd.Normal(loc=mue, scale=tf.cast(agent.model.sigma, tf.float64))
+        prob = dist.cdf(action)
 
-        target = tf.log(prob)
+        target = tf.math.log(prob)
 
-        gradients = (r_sum - value) * tape.gradient(target, agent.model.pi_network.trainable_variables)
+        print("r_sum: ", r_sum)
+        print("value: ", value)
+        print("target: ", target)
+
+        factor = tf.cast((r_sum - tf.cast(tf.squeeze(value), tf.float64)), tf.float64)
+
+        print("Factor: ", factor)
+
+        gradients = tf.cast(tape.gradient(target, agent.model.pi_network.trainable_variables), tf.float64)
+
+        print("Gradients: ", gradients)
+        factored_gradients = factor * gradients
         opt.apply_gradients(zip(-1 * gradients, agent.model.pi_network.trainable_variables))
 
     return loss
@@ -126,8 +142,8 @@ if __name__ == "__main__":
     state_size = 8
 
     model_kwargs = {
-        "batch_size": 1,
-        "state_size": 8,
+        "batch_size": batch_size,
+        "state_size": state_size,
         "sigma1": 0.1,
         "sigma2": 0.1
     }
