@@ -3,6 +3,7 @@ import logging
 import gym
 import numpy as np
 import tensorflow as tf
+#import tensorflow_probability as tfp
 import ray
 from really import SampleManager
 from gridworlds import GridWorld
@@ -23,73 +24,95 @@ class Pi(tf.keras.Model):
         self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
-        self.layer_list_pi = [
+        self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
-            tf.keras.layers.Dense(2)]
+            tf.keras.layers.Dense(2, use_bias=False)]
 
-        self.layer_list_v = [
+
+    def call(self, state):
+
+        for layer in self.layer_list:
+            state = layer(state)
+        
+        return state
+
+
+class ValueEstimator(tf.keras.Model):
+
+    def __init__(self, state_size, batch_size):
+
+        super(ValueEstimator, self).__init__()
+        self.state_size = state_size
+        self.middle_layer_neurons = 32
+        self.second_layer_neurons = 16
+
+        self.layer_list = [
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
             tf.keras.layers.Dense(1)]
 
 
     def call(self, state):
 
-        state2 = state
-
-        for layer in self.layer_list_pi:
+        for layer in self.layer_list:
             state = layer(state)
+        
+        return state
 
-        for layer in self.layer_list_v:
-            state2 = layer(state2)    
+
+class ModelWrapper(tf.keras.Model):
+        
+    def __init__(self, state_size, batch_size, sigma1=0.1, sigma2=0.1):
+        super(ModelWrapper, self).__init__()
+        self.value_network = ValueEstimator(state_size, batch_size)
+        self.pi_network = Pi(state_size, batch_size)
+        self.sigma = tf.constant(np.array([sigma1, sigma2]))
+
+    # @tf.function
+    def call(self, x):
+        # obtain mu of value network
+        mu = self.pi_network(x)
+
+        # get an value estimate from the value network
+        value = self.value_network(tf.identity(x))
 
         output = {}
-        output["mu"] = state
-        output["sigma"] = tf.constant(0.1)
-        output["value_estimate"] = state2
+        output["mu"] = mu
+        output["sigma"] = self.sigma
+        output["value_estimate"] = value
 
         return output
 
 
-def train_new(agent, state, action, target, optim, loss_func):
 
+def train_pi(action, state, r_sum, value, opt):
+    
     with tf.GradientTape() as tape:
 
-        out = agent.q_val(state, action)
-        loss = loss_func(target, out)
-        gradients = tape.gradient(loss, agent.model.trainable_variables)
-        optim.apply_gradients(zip(gradients, agent.model.trainable_variables))
+        # mue = agent.model.pi_network(tf.expand_dims(state, axis=0))
+        # dist = tf.contrib.distributions.Normal(mue, agent.model.sigma)
+        # prob = dist.pdf(action)
+        
+        #tfd = tfp.distributions
+        #dist = tfd.Normal(loc=mue, scale=agent.model.sigma)
+        #prob = dist.cdf(action)
+
+        target = tf.log(prob)
+
+        gradients = (r_sum - value) * tape.gradient(target, agent.model.pi_network.trainable_variables)
+        opt.apply_gradients(zip(-1 * gradients, agent.model.pi_network.trainable_variables))
 
     return loss
 
-
-
-# @tf.function
-def train(dqn, state, action, target, optim, loss_func):
-    """
-    Trains the deep Q-Network.
-
-    dqn: the network
-    state: the state in which the action was taken
-    action: the taken action
-    target: the q-values according to the Watkins-Formula
-    optim: the optimizer to be used (e.g. Adam)
-    loss_func: the loss function to be used (e.g. MSE)
-    """
-
-    a = np.array([[i, val] for i, val in enumerate(action.numpy())])
+def train_v(agent, r_sum, state, opt):
 
     with tf.GradientTape() as tape:
-        prediction = dqn(state)
-        # we want to run backprop only on the actions we took.
-        #relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
-        #loss = loss_func(target, relevant_qvals)
 
-        out = tf.gather_nd(prediction["q_values"], tf.constant(a))
-        loss = loss_func(target, out)
+        val = agent.model.value_network(tf.expand_dims(state, axis=0))
 
-        gradients = tape.gradient(loss, dqn.trainable_variables)
-        optim.apply_gradients(zip(gradients, dqn.trainable_variables))
+        loss = tf.keras.losses.MSE(r_sum, val)
+        gradients = tape.gradient(loss, agent.model.value_network.trainable_variables)
+        opt.apply_gradients(zip(gradients, agent.model.value_network.trainable_variables))
 
     return loss
 
@@ -99,19 +122,24 @@ if __name__ == "__main__":
     if not os.path.exists("./logging/"):
         os.makedirs("logging")
 
+    batch_size = 1
+    state_size = 8
+
     model_kwargs = {
         "batch_size": 1,
         "state_size": 8,
+        "sigma1": 0.1,
+        "sigma2": 0.1
     }
 
     kwargs = {
-        "model": Pi,
+        "model": ModelWrapper,
         "model_kwargs": model_kwargs,
         "returns": ['monte_carlo'], 
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 1,
-        "total_steps": 20, # how many total steps we do
-        "num_steps": 20,
+        "total_steps": 50, # how many total steps we do
+        "num_steps": 50,
         "action_sampling_type": "continous_normal_diagonal",
         "epsilon": 0.9
     }
@@ -171,15 +199,42 @@ if __name__ == "__main__":
         # sample data to optimize on from buffer
         sample_dict = manager.sample(1, from_buffer=False) # 
 
-        #print(sample_dict)
-
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
 
-        step = 0
-        for state, action, reward, state_next, nd, mc in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done'], data_dict['monte_carlo']):
-            print("MC rewards: ", mc)
-        data_dict = None
+        def get_end(data):
+            for i, d in enumerate(data):
+                if d == 0:
+                    return i, True
+            return len(data)-1, False
+        
+        end, terminal = get_end(sample_dict['not_done'])
+
+        #entries = ['state', 'action', 'reward', 'state_new', 'monte_carlo']
+
+        #data = [data_dict[val] for val in entries]
+
+        states = sample_dict['state'][:end]
+        actions = sample_dict['action'][:end]
+        new_states = sample_dict['state_new'][:end]
+        mc_rewards = sample_dict['monte_carlo'][:end]
+        
+        if terminal: # TODO think about this
+            R = agent.model(states[end])['value_estimate']
+            mc_rewards.apend(gamma ** end * R)
+
+        r_sum = tf.reduce_sum(mc_rewards)
+        old_mcr = 0
+        for s, a, sn, mc_r in zip(states, actions, new_states, mc_rewards): 
+            r_sum -= old_mcr
+            value = agent.model(tf.expand_dims(s, axis=0))['value_estimate']
+            old_mcr = mc_r
+
+            loss_pi = train_pi(a, s, r_sum, value, None)
+            loss_v = train_v(agent, r_sum, s, optimizer)
+
+            print("value loss: ", loss_v)
+            print("pi loss: ", loss_pi)
 
         # update with new weights
         new_weights = agent.model.get_weights()
