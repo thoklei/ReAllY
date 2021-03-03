@@ -197,8 +197,9 @@ if __name__ == "__main__":
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
-        new_epsilon = 0.9 * manager.kwargs['epsilon']
-        manager.set_epsilon(new_epsilon)
+        if e % 5 == 0: 
+            new_epsilon = 0.9 * manager.kwargs['epsilon']
+            manager.set_epsilon(new_epsilon)
 
         # if e % saving_after == 0:
         #     manager.save_model(saving_path, e)
