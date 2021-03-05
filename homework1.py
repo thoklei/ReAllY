@@ -1,35 +1,39 @@
 import logging, os
-
+logging.disable(logging.WARNING)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import gym
 import numpy as np
-import tensorflow as tf
 import ray
 from really import SampleManager
-# from really.utils import (
-#     dict_to_dict_of_datasets,
-# )
-
 from gridworlds.envs.gridworld import GridWorld
 
 """
-Your task is to solve the provided Gridword with tabular Q learning!
-In the world there is one place where the agent cannot go, the block.
-There is one terminal state where the agent receives a reward.
-For each other state the agent gets a reward of 0.
-The environment behaves like a gym environment.
-Have fun!!!!
-
+Solving Gridworld with Q-learning.
 """
 
 
 class TabularQ(object):
 
+
     def __init__(self, h, w, action_space):
+        """
+        Constructor for Tabular Q Model.
+
+        h = height of the gridworld
+        w = width of the gridworld
+        action_space = the number of actions that can be performed 
+        """
+
         self.action_space = action_space
         self.table = np.zeros((action_space, h, w))
         
 
     def __call__(self, state):
+        """
+        Given a state, outputs an array of Q-values for the actions.
+
+        state = the state to be interpreted
+        """
         state = np.squeeze(state)
         x,y = state
         x = int(x)
@@ -37,18 +41,24 @@ class TabularQ(object):
 
         output = {}
         output["q_values"] = np.expand_dims(self.table[:, x,y], axis=0)
-        # TODO return v_estimate
 
         return output
         
 
     def get_weights(self):
+        """
+        Returns a copy of the Q-table.
+        """
         return self.table.copy()
 
-    def set_weights(self, q_vals):
-        #print("Q-vals in set_weights: ", q_vals)
-        self.table = q_vals.copy()
 
+    def set_weights(self, q_vals):
+        """
+        Updates the values stored in the Q-table.
+
+        q_vals = the new q values
+        """
+        self.table = q_vals.copy() # being paranoid about python referencing
 
 
 if __name__ == "__main__":
@@ -71,23 +81,22 @@ if __name__ == "__main__":
         "model": TabularQ,
         "environment": GridWorld,
         "num_parallel": 2,
-        "total_steps": 10,
+        "total_steps": 20,
         "model_kwargs": model_kwargs,
-        "env_kwargs": env_kwargs,
-        "action_sampling_type": "epsilon_greedy",
-        "epsilon": 0.9
+        "env_kwargs": env_kwargs
+        #"action_sampling_type": "epsilon_greedy",
+        #"epsilon": 0.9
     }
 
-    # initilize
+    # initializing ray
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    # where to save your results to: create this directory in advance!
     saving_path = os.getcwd() + "/progress_test"
 
-    epochs = 30
+    epochs = 30 # running lots of epochs, but worth it
     buffer_size = 5000
-    test_steps = 1000
+    test_steps = 50
     sample_size = 1000
     optim_batch_size = 8
     saving_after = 5
@@ -95,11 +104,12 @@ if __name__ == "__main__":
     alpha = 0.1
     gamma = 0.95
 
-    # keys for replay buffer -> what you will need for optimization
     optim_keys = ["state", "action", "reward", "state_new", "not_done"]
+
     # initialize buffer
     manager.initilize_buffer(buffer_size, optim_keys)
-    # initilize progress aggregator
+
+    # initialize progress aggregator
     manager.initialize_aggregator(
         path=saving_path, saving_after=5, aggregator_keys=["loss", "time_steps"]
     )
@@ -107,7 +117,7 @@ if __name__ == "__main__":
     print("test before training: ")
     manager.test(
         max_steps=10,
-        test_episodes=1,
+        test_episodes=3,
         render=True,
         do_print=True,
         evaluation_measure="time_and_reward",
@@ -119,54 +129,39 @@ if __name__ == "__main__":
     for e in range(epochs):
 
         # experience replay
-        print("collecting experience..")
+        print("Collecting experience..")
         data = manager.get_data()
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
         sample_dict = manager.sample(sample_size)
-        print(f"collected data for: {sample_dict.keys()}")
 
-        print("optimizing...")
+        print("Optimizing...")
 
-        # iterate through your datasets
+        # iterating through dataset
         old_table = agent.get_weights()
         delta = 0.0
-        for s, a , r , n , d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
-            #print(s, a , r , n , d )
-            s_x, s_y = s
-            n_x, n_y = n
-            local_delta = alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
-            old_table[a, s_x, s_y] += local_delta
-            delta += local_delta**2
-
-        # optimize agent
-        # calculate losses
-        # weights = agent.model.get_weights()
-        # losses = (old_table-weights)**2
+        for s, a, r, n, d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
+            s_x, s_y = s # unpacking state
+            n_x, n_y = n # unpacking new state
+            local_delta = alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y]) # Q-learning formula
+            old_table[a, s_x, s_y] += local_delta # update parameters
+            delta += local_delta**2 # collecting squared delta, only for printing progress
 
         # set new weights
         manager.set_agent(old_table)
+
         # get new weights
         agent = manager.get_agent()
-        # update aggregator
+        
         time_steps = manager.test(test_steps)
+
+        # update aggregator
         manager.update_aggregator(loss=delta, time_steps=time_steps)
-        # print progress
-        print(
-            f"epoch ::: {e}  loss ::: {delta}   avg env steps ::: {np.mean(time_steps)}"
-        )
+        
+        print(f"epoch ::: {e}  loss ::: {delta}   avg env steps ::: {np.mean(time_steps)}")
 
-        # yeu can also alter your managers parameters
-        # manager.set_epsilon(epsilon=0.99)
+    print("Done!")
 
-        if e % saving_after == 0:
-            # you can save models
-            # manager.save_model(saving_path, e)
-            pass
-
-    # and load models
-    # manager.load_model(saving_path)
-    print("done")
-    print("testing optimized agent")
-    manager.test(test_steps, test_episodes=10, render=True)
+    print("Testing optimized agent...")
+    manager.test(test_steps, test_episodes=3, render=True)
