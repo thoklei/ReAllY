@@ -11,7 +11,6 @@ from gridworlds.envs.gridworld import GridWorld
 Solving Gridworld with Q-learning.
 """
 
-
 class TabularQ(object):
 
 
@@ -47,7 +46,7 @@ class TabularQ(object):
 
     def get_weights(self):
         """
-        Returns a copy of the Q-table.
+        Returns the Q-table.
         """
         return self.table.copy()
 
@@ -58,7 +57,7 @@ class TabularQ(object):
 
         q_vals = the new q values
         """
-        self.table = q_vals.copy() # being paranoid about python referencing
+        self.table = q_vals
 
 
 if __name__ == "__main__":
@@ -66,11 +65,12 @@ if __name__ == "__main__":
     action_dict = {0: "UP", 1: "RIGHT", 2: "DOWN", 3: "LEFT"}
 
     env_kwargs = {
-        "height": 10,
-        "width": 10,
+        "height": 5,
+        "width": 5,
+        "block_position": (3,3),
         "action_dict": action_dict,
-        "start_position": (2, 0),
-        "reward_position": (9, 9),
+        "start_position": (0, 0),
+        "reward_position": (4, 4),
     }
 
     env = GridWorld(**env_kwargs)
@@ -84,8 +84,6 @@ if __name__ == "__main__":
         "total_steps": 20,
         "model_kwargs": model_kwargs,
         "env_kwargs": env_kwargs
-        #"action_sampling_type": "epsilon_greedy",
-        #"epsilon": 0.9
     }
 
     # initializing ray
@@ -94,11 +92,10 @@ if __name__ == "__main__":
 
     saving_path = os.getcwd() + "/progress_test"
 
-    epochs = 30 # running lots of epochs, but worth it
+    epochs = 10 
     buffer_size = 5000
     test_steps = 50
     sample_size = 1000
-    optim_batch_size = 8
     saving_after = 5
 
     alpha = 0.1
@@ -111,16 +108,15 @@ if __name__ == "__main__":
 
     # initialize progress aggregator
     manager.initialize_aggregator(
-        path=saving_path, saving_after=5, aggregator_keys=["loss", "time_steps"]
+        path=saving_path, saving_after=5, aggregator_keys=["time_steps"]
     )
 
-    print("test before training: ")
+    print("Testing before training... ")
     manager.test(
         max_steps=10,
         test_episodes=3,
-        render=True,
-        do_print=True,
-        evaluation_measure="time_and_reward",
+        render=False,
+        do_print=True
     )
 
     # get initial agent
@@ -129,8 +125,8 @@ if __name__ == "__main__":
     for e in range(epochs):
 
         # experience replay
-        print("Collecting experience..")
-        data = manager.get_data()
+        print("Collecting experience...")
+        data = manager.get_data(total_steps=1000)
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
@@ -140,13 +136,13 @@ if __name__ == "__main__":
 
         # iterating through dataset
         old_table = agent.get_weights()
-        delta = 0.0
-        for s, a, r, n, d in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new'], sample_dict['not_done']):
+        for s, a, r, n in zip(sample_dict['state'], sample_dict['action'], sample_dict['reward'], sample_dict['state_new']):
+            
             s_x, s_y = s # unpacking state
             n_x, n_y = n # unpacking new state
-            local_delta = alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y]) # Q-learning formula
-            old_table[a, s_x, s_y] += local_delta # update parameters
-            delta += local_delta**2 # collecting squared delta, only for printing progress
+            
+            # Apply Q-learning formula
+            old_table[a, s_x, s_y] += alpha * (r + gamma * np.max(old_table[:, n_x, n_y]) - old_table[a, s_x, s_y])
 
         # set new weights
         manager.set_agent(old_table)
@@ -157,9 +153,9 @@ if __name__ == "__main__":
         time_steps = manager.test(test_steps)
 
         # update aggregator
-        manager.update_aggregator(loss=delta, time_steps=time_steps)
+        manager.update_aggregator(time_steps=time_steps)
         
-        print(f"epoch ::: {e}  loss ::: {delta}   avg env steps ::: {np.mean(time_steps)}")
+        print(f"epoch ::: {e}  avg env steps ::: {np.mean(time_steps)}")
 
     print("Done!")
 

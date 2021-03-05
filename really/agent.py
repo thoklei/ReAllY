@@ -8,6 +8,7 @@ import random
 from scipy.stats import norm, lognorm
 
 
+
 class Agent:
     """
     Agent wrapper:
@@ -33,23 +34,21 @@ class Agent:
         model_kwargs={},
     ):
         super(Agent, self).__init__
-
+        #logging.basicConfig(
+        #    filename=f"logging/agent.log", level=logging.DEBUG
+        #)
         self.model_kwargs = model_kwargs
         self.model = model(**self.model_kwargs)
 
         self.weights = weights
+        self.initialize_model(self.model, input_shape)
+        self.model.set_weights(weights)
 
         self.action_sampling_type = action_sampling_type
         self.temperature = temperature
         self.epsilon = epsilon
         self.value_estimate = value_estimate
-        logging.basicConfig(filename=f"logging/agent.log", level=logging.DEBUG)
-        logging.warning(f"input shape {input_shape}")
-        # if weights given iitialize random weights, else set weights
-        self.initialize_weights(self.model, input_shape)
 
-        if weights is not None:
-            self.model.set_weights(weights)
 
     def set_weights(self, weights):
         self.model.set_weights(weights)
@@ -57,7 +56,7 @@ class Agent:
     def get_weights(self):
         return self.model.get_weights()
 
-    def initialize_weights(self, model, input_shape):
+    def initialize_model(self, model, input_shape):
         if not (input_shape):
             return model.get_weights()
         if hasattr(model, "tensorflow"):
@@ -66,9 +65,7 @@ class Agent:
             ), 'You have a tensorflow model with no input shape specified for weight initialization. \n Specify input_shape in "model_kwargs" or specify as False if not needed'
         dummy = np.zeros(input_shape)
         model(dummy)
-        weights = model.get_weights()
 
-        return weights
 
     # agent readout handler
     def act_experience(self, state, return_log_prob=False):
@@ -86,8 +83,7 @@ class Agent:
                 if return_log_prob:
                     output["log_probability"] = np.asarray(
                         [np.log(self.epsilon)] * logits.shape[0]
-                    )
-
+                        )
             else:
                 # log prob of 1-epsilon
                 action = [
@@ -97,7 +93,7 @@ class Agent:
                 if return_log_prob:
                     output["log_probability"] = np.asarray(
                         [np.log(1 - self.epsilon)] * logits.shape[0]
-                    )
+                        )
             output["action"] = action
 
         elif self.action_sampling_type == "thompson":
@@ -110,7 +106,7 @@ class Agent:
             output["action"] = action
             if return_log_prob:
                 output["log_probability"] = np.log(
-                    [probs[i][a] for i, a in zip(range(probs.shape[0]), action)]
+                    [probs[i][a] for i, a in zip(range(logits.shape[0]), action)]
                 )
 
         elif self.action_sampling_type == "continous_normal_diagonal":
@@ -118,6 +114,8 @@ class Agent:
             mus, sigmas = network_out["mu"].numpy(), network_out["sigma"].numpy()
             action = norm.rvs(mus, sigmas)
             output["action"] = action
+            logging.warning('action')
+            logging.warning(action)
 
             if return_log_prob:
                 output["log_probability"] = np.sum(norm.logpdf(action, mus, sigmas))
@@ -145,3 +143,20 @@ class Agent:
         q_values = model_out["q_values"]
         x = tf.gather(q_values, actions, batch_dims=1)
         return x
+
+    def flowing_log_prob(self, state, action, return_entropy=True):
+        output = {}
+        action = tf.cast(action, dtype=tf.float32)
+        network_out = self.model(state)
+        if self.action_sampling_type == 'continous_normal_diagonal':
+            mus, sigmas = network_out["mu"], network_out["sigma"]
+            dist = tf.compat.v1.distributions.Normal(mus, sigmas)
+            log_prob = dist.log_prob(action)
+            if return_entropy:
+                firs_step = tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas))
+                second_step = tf.constant(0.5, dtype=tf.float32) * tf.math.log(2*tf.constant(np.pi, dtype=tf.float32))
+                entropy = firs_step * second_step
+            return log_prob, entropy
+        else:
+            print(f"flowing log probabilities not yet implemented for sampling type {self.action_sampling_type}")
+            raise NotImplemented

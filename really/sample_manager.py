@@ -54,7 +54,6 @@ class SampleManager:
         self.environment = environment
         self.num_parallel = num_parallel
         self.total_steps = total_steps
-        self.returns = returns
         self.kwargs = kwargs
         self.buffer = None
 
@@ -68,18 +67,27 @@ class SampleManager:
                 self.kwargs.pop("env_kwargs")
             self.env_instance = self.env_creator(self.environment, **env_kwargs)
 
-        # initilize empty datasets aggregator
-        self.data = {}
-        self.data["action"] = []
-        self.data["state"] = []
-        self.data["reward"] = []
-        self.data["state_new"] = []
-        self.data["not_done"] = []
+
+        # specify input shape if not given
+        if not ("input_shape" in kwargs):
+            state = self.env_instance.reset()
+            state = np.expand_dims(state, axis=0)
+            kwargs["input_shape"] = state.shape
+
+        # if no model_kwargs given set to empty
+        if not ("model_kwargs") in kwargs:
+            kwargs["model_kwargs"] = {}
+
+        # initilize random weights if not given
+        if not('weights' in kwargs.keys()):
+            random_weights = self.initialize_weights(self.model, kwargs['input_shape'], kwargs['model_kwargs'])
+            kwargs['weights'] = random_weights
 
         ## some checkups
 
         assert self.num_parallel > 0, "num_parallel hast to be greater than 0!"
 
+        self.kwargs['discrete_env'] = True
         # check action sampling type
         if "action_sampling_type" in kwargs.keys():
             type = kwargs["action_sampling_type"]
@@ -88,6 +96,10 @@ class SampleManager:
                     f"unsupported sampling type: {type}. assuming thompson sampling instead."
                 )
                 self.kwargs["action_sampling_type"] = "thompson"
+            if type == 'continous_normal_diagonal':
+                self.discrete_env = False
+                self.kwargs['discrete_env'] = False
+
 
         if not ("temperature" in self.kwargs.keys()):
             self.kwargs["temperature"] = 1
@@ -97,10 +109,10 @@ class SampleManager:
         for r in returns:
             if r not in ["log_prob", "monte_carlo", "value_estimate"]:
                 print(f"unsuppoerted return key: {r}")
-                if r == "value_estimate":
+                returns.pop(r)
+            if r == "value_estimate":
                     self.kwargs["value_estimate"] = True
-            else:
-                self.data[r] = []
+        self.returns = returns
 
         # check for runner sampling method:
         # error if both are specified
@@ -134,10 +146,38 @@ class SampleManager:
             # defaults to None, i.e. wait for remote_min_returns to be returned irrespective of time
             self.remote_time_out = None
 
+        self.reset_data()
         # # TODO: print info on setup values
+
+    def reset_data(self):
+        # initilize empty datasets aggregator
+        self.data = {}
+        self.data["action"] = []
+        self.data["state"] = []
+        self.data["reward"] = []
+        self.data["state_new"] = []
+        self.data["not_done"] = []
+        for r in self.returns:
+            self.data[r] = []
+
+
+    def initialize_weights(self, model, input_shape, model_kwargs):
+        model_inst = model(**model_kwargs)
+        if not(input_shape):
+            return model_inst.get_weights()
+        if hasattr(model, "tensorflow"):
+            assert (
+                input_shape != None
+            ), 'You have a tensorflow model with no input shape specified for weight initialization. \n Specify input_shape in "model_kwargs" or specify as False if not needed'
+        dummy = np.zeros(input_shape)
+        model_inst(dummy)
+        weights = model_inst.get_weights()
+
+        return weights
 
     def get_data(self, do_print=False, total_steps=None):
 
+        self.reset_data()
         if total_steps is not None:
             old_steps = self.total_steps
             self.total_steps = total_steps
@@ -156,22 +196,21 @@ class SampleManager:
             for i in range(self.num_parallel)
         ]
         t = 0
+
+        # initial processes
+        if self.run_episodes:
+            runner_processes = [b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes]
+        else:
+            runner_processes = [b.run_n_steps.remote(self.runner_steps) for b in runner_boxes]
+
         # run as long as not yet reached number of total steps
         while not_done:
 
-            if self.run_episodes:
-                ready, remaining = ray.wait(
-                    [b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes],
-                    num_returns=self.remote_min_returns,
-                    timeout=self.remote_time_out,
+            ready, remaining = ray.wait(
+                runner_processes,
+                num_returns=self.remote_min_returns,
+                timeout=self.remote_time_out
                 )
-            else:
-                ready, remaining = ray.wait(
-                    [b.run_n_steps.remote(self.runner_steps) for b in runner_boxes],
-                    num_returns=self.remote_min_returns,
-                    timeout=self.remote_time_out,
-                )
-
             # boxes returns list of tuples (data_agg, index)
             returns = ray.get(ready)
             results = []
@@ -187,9 +226,16 @@ class SampleManager:
             not_done = self._store(results)
             # get boxes that are alreadey done
             accesed_mapping = map(runner_boxes.__getitem__, indexes)
-            dones = list(accesed_mapping)
-            # concatenate dones and not dones
-            runner_boxes = dones + runner_boxes
+            done_runners = list(accesed_mapping)
+            # create new processes
+            if self.run_episodes:
+                new_processes = [b.run_n_episodes.remote(self.runner_steps) for b in done_runners]
+
+            else:
+                new_processes = [b.run_n_steps.remote(self.runner_steps) for b in done_runners]
+
+            # concatenate old and new processes
+            runner_processes = remaining + new_processes
             t += 1
 
         if total_steps is not None:
@@ -211,7 +257,6 @@ class SampleManager:
 
         # stop if enought data is aggregated
         if len(self.data["state"]) > self.total_steps:
-
             not_done = False
 
         return not_done
@@ -221,14 +266,9 @@ class SampleManager:
         if from_buffer:
             dict = self.buffer.sample(sample_size)
         else:
-            # save old sepcification
-            old_total_steps = self.total_steps
-            # set to sampling size
-            self.total_steps = sample_size
-            self.get_data()
-            dict = self.data
-            # restore old specification
-            self.total_steps = old_total_steps
+
+            dict = self.get_data(total_steps=sample_size)
+
         return dict
 
     def get_agent(self, test=False):
@@ -321,7 +361,9 @@ class SampleManager:
                 # check if action is tf
                 if tf.is_tensor(action):
                     action = action.numpy()
-                state_new, reward, done, info = env.step(int(action))
+                if self.kwargs['discrete_env']:
+                    action = int(action)
+                state_new, reward, done, info = env.step(action)
                 state_new = np.expand_dims(state_new, axis=0)
                 if return_reward:
                     reward_per_episode.append(reward)
@@ -362,8 +404,8 @@ class SampleManager:
                 )
             return rewards
 
-    def initialize_aggregator(self, path, saving_after=10, aggregator_keys=["loss"]):
-        self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys)
+    def initialize_aggregator(self, path, saving_after=10, aggregator_keys=["loss"], max_size=5, init_epoch=0):
+        self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys, max_size, init_epoch)
 
     def update_aggregator(self, **kwargs):
         self.agg.update(**kwargs)

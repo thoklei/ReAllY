@@ -1,6 +1,6 @@
 
 
-# prepar a2c
+# a2c value reg + entropy reg
 
 
 FANCY:
