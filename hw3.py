@@ -225,6 +225,7 @@ if __name__ == "__main__":
 
         r_sum = tf.reduce_sum(mc_rewards)
         old_mcr = 0
+        loss = 0
         for s, a, sn, mc_r in zip(states, actions, new_states, mc_rewards): 
             r_sum -= old_mcr
             value = agent.model(tf.expand_dims(s, axis=0))['value_estimate']
@@ -232,6 +233,7 @@ if __name__ == "__main__":
 
             train_pi(a, s, r_sum, value, optimizer)
             loss_v = train_v(agent, r_sum, s, optimizer)
+            loss +=loss_v
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -246,7 +248,7 @@ if __name__ == "__main__":
         time_steps = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
         manager.update_aggregator(loss=loss_v, time_steps=time_steps)
 
-        print(f"epoch ::: {e}  loss ::: {loss_v}   avg env steps ::: {np.mean(time_steps)}")
+        print(f"epoch ::: {e}  loss ::: {loss}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
         # if e % 5 == 0: 
