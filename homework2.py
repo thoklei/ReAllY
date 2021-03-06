@@ -162,7 +162,7 @@ if __name__ == "__main__":
             q_target = tf.cast(reward,tf.float64) + (tf.cast(nd, tf.float64) * tf.cast(gamma * agent.max_q(state_next), tf.float64))
             
             # apply backpropagation and sum up the losses
-            loss += train_new(agent, state, action, q_target, optimizer, loss_function)
+            loss += train(agent, state, action, q_target, optimizer, loss_function)
 
 
         # update with new weights
