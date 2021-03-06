@@ -54,7 +54,6 @@ class SampleManager:
         self.environment = environment
         self.num_parallel = num_parallel
         self.total_steps = total_steps
-        self.returns = returns
         self.kwargs = kwargs
         self.buffer = None
 
@@ -68,13 +67,6 @@ class SampleManager:
                 self.kwargs.pop("env_kwargs")
             self.env_instance = self.env_creator(self.environment, **env_kwargs)
 
-        # initilize empty datasets aggregator
-        self.data = {}
-        self.data["action"] = []
-        self.data["state"] = []
-        self.data["reward"] = []
-        self.data["state_new"] = []
-        self.data["not_done"] = []
 
         # specify input shape if not given
         if not ("input_shape" in kwargs):
@@ -117,10 +109,10 @@ class SampleManager:
         for r in returns:
             if r not in ["log_prob", "monte_carlo", "value_estimate"]:
                 print(f"unsuppoerted return key: {r}")
-                if r == "value_estimate":
+                returns.pop(r)
+            if r == "value_estimate":
                     self.kwargs["value_estimate"] = True
-            else:
-                self.data[r] = []
+        self.returns = returns
 
         # check for runner sampling method:
         # error if both are specified
@@ -154,7 +146,20 @@ class SampleManager:
             # defaults to None, i.e. wait for remote_min_returns to be returned irrespective of time
             self.remote_time_out = None
 
+        self.reset_data()
         # # TODO: print info on setup values
+
+    def reset_data(self):
+        # initilize empty datasets aggregator
+        self.data = {}
+        self.data["action"] = []
+        self.data["state"] = []
+        self.data["reward"] = []
+        self.data["state_new"] = []
+        self.data["not_done"] = []
+        for r in self.returns:
+            self.data[r] = []
+
 
     def initialize_weights(self, model, input_shape, model_kwargs):
         model_inst = model(**model_kwargs)
@@ -172,6 +177,7 @@ class SampleManager:
 
     def get_data(self, do_print=False, total_steps=None):
 
+        self.reset_data()
         if total_steps is not None:
             old_steps = self.total_steps
             self.total_steps = total_steps
@@ -190,22 +196,21 @@ class SampleManager:
             for i in range(self.num_parallel)
         ]
         t = 0
+
+        # initial processes
+        if self.run_episodes:
+            runner_processes = [b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes]
+        else:
+            runner_processes = [b.run_n_steps.remote(self.runner_steps) for b in runner_boxes]
+
         # run as long as not yet reached number of total steps
         while not_done:
 
-            if self.run_episodes:
-                ready, remaining = ray.wait(
-                    [b.run_n_episodes.remote(self.runner_steps) for b in runner_boxes],
-                    num_returns=self.remote_min_returns,
-                    timeout=self.remote_time_out,
+            ready, remaining = ray.wait(
+                runner_processes,
+                num_returns=self.remote_min_returns,
+                timeout=self.remote_time_out
                 )
-            else:
-                ready, remaining = ray.wait(
-                    [b.run_n_steps.remote(self.runner_steps) for b in runner_boxes],
-                    num_returns=self.remote_min_returns,
-                    timeout=self.remote_time_out,
-                )
-
             # boxes returns list of tuples (data_agg, index)
             returns = ray.get(ready)
             results = []
@@ -221,9 +226,16 @@ class SampleManager:
             not_done = self._store(results)
             # get boxes that are alreadey done
             accesed_mapping = map(runner_boxes.__getitem__, indexes)
-            dones = list(accesed_mapping)
-            # concatenate dones and not dones
-            runner_boxes = dones + runner_boxes
+            done_runners = list(accesed_mapping)
+            # create new processes
+            if self.run_episodes:
+                new_processes = [b.run_n_episodes.remote(self.runner_steps) for b in done_runners]
+
+            else:
+                new_processes = [b.run_n_steps.remote(self.runner_steps) for b in done_runners]
+
+            # concatenate old and new processes
+            runner_processes = remaining + new_processes
             t += 1
 
         if total_steps is not None:
@@ -234,7 +246,6 @@ class SampleManager:
     # stores results and asserts if we are done
     def _store(self, results):
         not_done = True
-
         # results is a list of dctinaries
         assert (
             self.data.keys() == results[0].keys()
@@ -393,8 +404,8 @@ class SampleManager:
                 )
             return rewards
 
-    def initialize_aggregator(self, path, saving_after=10, aggregator_keys=["loss"]):
-        self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys)
+    def initialize_aggregator(self, path, saving_after=10, aggregator_keys=["loss"], max_size=5, init_epoch=0):
+        self.agg = Smoothing_aggregator(path, saving_after, aggregator_keys, max_size, init_epoch)
 
     def update_aggregator(self, **kwargs):
         self.agg.update(**kwargs)

@@ -13,6 +13,7 @@ from really.utils import (
 
 
 class MyModel(tf.keras.Model):
+
     def __init__(self, output_units=2):
 
         super(MyModel, self).__init__()
@@ -54,6 +55,9 @@ if __name__ == "__main__":
     if not os.path.exists("./logging/"):
         os.makedirs("logging")
 
+    if not os.path.exists("./progress_test/"):
+        os.makedirs("progress_test")
+
     kwargs = {
         "model": MyModel,
         "environment": "CartPole-v0",
@@ -94,6 +98,7 @@ if __name__ == "__main__":
 
     # get initial agent
     agent = manager.get_agent()
+    print(agent.model.trainable_variables)
 
     for e in range(epochs):
 
@@ -141,7 +146,7 @@ if __name__ == "__main__":
             # you can save models
             manager.save_model(saving_path, e)
 
-    # and load mmodels
+    # and load models
     manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")
