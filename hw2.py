@@ -2,6 +2,7 @@ import os
 import logging
 import gym
 import numpy as np
+import collections
 import tensorflow as tf
 import ray
 from really import SampleManager
@@ -33,7 +34,7 @@ class DQN(tf.keras.Model):
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
-            tf.keras.layers.Dense(n_actions, use_bias=False, kernel_regularizer='l2')]
+            tf.keras.layers.Dense(n_actions, use_bias=False)]
 
 
     @tf.function
@@ -104,10 +105,10 @@ if __name__ == "__main__":
     #######################
     saving_path = os.getcwd() + "/progress_test"
 
-    buffer_size = 30000
+    buffer_size = 10000
     test_steps = 250
     epochs = 30
-    sample_size = 4000
+    sample_size = 30000
     optim_batch_size = 32
     saving_after = 10
 
@@ -139,15 +140,16 @@ if __name__ == "__main__":
 
     # get initial agent
     agent = manager.get_agent()
+    mean_list = collections.deque(maxlen=5)
 
     for e in range(epochs):
 
-        data = manager.get_data()
+        data = manager.get_data(total_steps=1000)
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
         # sampling fresh trajectories seems to work better, should not be necessary though
-        sample_dict = manager.sample(sample_size, from_buffer=False) 
+        sample_dict = manager.sample(sample_size, from_buffer=True) 
 
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
@@ -171,10 +173,15 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps = manager.test(test_steps, test_episodes=5, render=False)
+        time_steps = manager.test(test_steps, test_episodes=50, render=False)
         manager.update_aggregator(loss=loss, time_steps=time_steps)
 
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
+
+        mean_list.append(np.mean(time_steps))
+
+        if np.mean(mean_list) > 190:
+            break
 
         # Annealing epsilon
         if (e+1) % 5 == 0: 
