@@ -52,6 +52,16 @@ class DQN(tf.keras.Model):
 
 
 def train_new(agent, state, action, target, optim, loss_func):
+    """
+    Trains the agent to output correct q-values for a state-action pair.
+
+    agent = the agent to be trained
+    state = the environment state to be trained on
+    action = the action to be trained on 
+    target = the immediate reward + maximum q-value of the succesive state
+    optim = the optimizer to be used
+    loss_func = the loss function to be used (MSE)
+    """        
 
     with tf.GradientTape() as tape:
 
@@ -59,37 +69,6 @@ def train_new(agent, state, action, target, optim, loss_func):
         loss = loss_func(target, out)
         gradients = tape.gradient(loss, agent.model.trainable_variables)
         optim.apply_gradients(zip(gradients, agent.model.trainable_variables))
-
-    return loss
-
-
-
-# @tf.function
-def train(dqn, state, action, target, optim, loss_func):
-    """
-    Trains the deep Q-Network.
-
-    dqn: the network
-    state: the state in which the action was taken
-    action: the taken action
-    target: the q-values according to the Watkins-Formula
-    optim: the optimizer to be used (e.g. Adam)
-    loss_func: the loss function to be used (e.g. MSE)
-    """
-
-    a = np.array([[i, val] for i, val in enumerate(action.numpy())])
-
-    with tf.GradientTape() as tape:
-        prediction = dqn(state)
-        # we want to run backprop only on the actions we took.
-        #relevant_qvals = tf.gather_nd(prediction["q_values"], action, 1)
-        #loss = loss_func(target, relevant_qvals)
-
-        out = tf.gather_nd(prediction["q_values"], tf.constant(a))
-        loss = loss_func(target, out)
-
-        gradients = tape.gradient(loss, dqn.trainable_variables)
-        optim.apply_gradients(zip(gradients, dqn.trainable_variables))
 
     return loss
 
@@ -110,9 +89,9 @@ if __name__ == "__main__":
         "model_kwargs": model_kwargs,
         "environment": 'CartPole-v0',
         "num_parallel": 4,
-        "total_steps": 400,
+        "total_steps": 1500,
         "action_sampling_type": "epsilon_greedy",
-        "epsilon": 0.8
+        "epsilon": 0.95
     }
 
     # initialize
@@ -127,14 +106,14 @@ if __name__ == "__main__":
 
     buffer_size = 30000
     test_steps = 250
-    epochs = 25
+    epochs = 30
     sample_size = 4000
     optim_batch_size = 32
     saving_after = 10
 
     gamma = 0.9
     learning_rate = 0.001
-    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate) #SGD(learning_rate, momentum=0.8)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
     loss_function = tf.keras.losses.MSE
 
     ########################
@@ -160,7 +139,6 @@ if __name__ == "__main__":
 
     # get initial agent
     agent = manager.get_agent()
-    #agent.model.build(optim_batch_size)
 
     for e in range(epochs):
 
@@ -168,7 +146,8 @@ if __name__ == "__main__":
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        sample_dict = manager.sample(sample_size, from_buffer=False)
+        # sampling fresh trajectories seems to work better, should not be necessary though
+        sample_dict = manager.sample(sample_size, from_buffer=False) 
 
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=optim_batch_size)
@@ -177,7 +156,8 @@ if __name__ == "__main__":
         for state, action, reward, state_next, nd in zip(data_dict['state'], data_dict['action'], data_dict['reward'], data_dict['state_new'], data_dict['not_done']):
 
             q_target = tf.cast(reward,tf.float64) + (tf.cast(nd, tf.float64) * tf.cast(gamma * agent.max_q(state_next), tf.float64))
-            # use backpropagation and count up the losses
+            
+            # use backpropagation and sum up the losses
             loss += train_new(agent, state, action, q_target, optimizer, loss_function)
 
 
@@ -197,15 +177,12 @@ if __name__ == "__main__":
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
-        if e % 5 == 0: 
+        if (e+1) % 5 == 0: 
             new_epsilon = 0.9 * manager.kwargs['epsilon']
             manager.set_epsilon(new_epsilon)
+            print("New Epsilon: ", new_epsilon)
 
-        # if e % saving_after == 0:
-        #     manager.save_model(saving_path, e)
+    print("Done!")
+    print("Testing optimized agent...")
 
-    # manager.load_model(saving_path)
-    print("Done.")
-    print("Testing optimized agent.")
-
-    manager.test(100, test_episodes=10, render=True, do_print=True)
+    manager.test(200, test_episodes=10, render=True, do_print=True)
