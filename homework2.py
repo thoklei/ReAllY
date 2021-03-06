@@ -16,6 +16,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
 class DQN(tf.keras.Model):
+
     def __init__(self, state_size, n_actions, batch_size):
         """
         Constructs a Deep Q-Network.
@@ -52,7 +53,7 @@ class DQN(tf.keras.Model):
         return output
 
 
-def train_new(agent, state, action, target, optim, loss_func):
+def train(agent, state, action, target, optim, loss_func):
     """
     Trains the agent to output correct q-values for a state-action pair.
 
@@ -140,6 +141,8 @@ if __name__ == "__main__":
 
     # get initial agent
     agent = manager.get_agent()
+
+    # circular buffer for avg env steps (used to stop training if agent is good)
     mean_list = collections.deque(maxlen=5)
 
     for e in range(epochs):
@@ -148,7 +151,6 @@ if __name__ == "__main__":
         manager.store_in_buffer(data)
 
         # sample data to optimize on from buffer
-        # sampling fresh trajectories seems to work better, should not be necessary though
         sample_dict = manager.sample(sample_size, from_buffer=True) 
 
         # create and batch tf datasets
@@ -159,7 +161,7 @@ if __name__ == "__main__":
 
             q_target = tf.cast(reward,tf.float64) + (tf.cast(nd, tf.float64) * tf.cast(gamma * agent.max_q(state_next), tf.float64))
             
-            # use backpropagation and sum up the losses
+            # apply backpropagation and sum up the losses
             loss += train_new(agent, state, action, q_target, optimizer, loss_function)
 
 
@@ -178,8 +180,10 @@ if __name__ == "__main__":
 
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
+        # store performance
         mean_list.append(np.mean(time_steps))
 
+        # if performace was good 5 times in a row, stop training
         if np.mean(mean_list) > 190:
             break
 
