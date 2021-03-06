@@ -31,9 +31,9 @@ class DQN(tf.keras.Model):
         self.second_layer_neurons = 16
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
-            tf.keras.layers.Dense(n_actions, use_bias=False)]
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
+            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
+            tf.keras.layers.Dense(n_actions, use_bias=False, kernel_regularizer='l2')]
 
 
     @tf.function
@@ -171,18 +171,20 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps = manager.test(test_steps, render=False)
+        time_steps = manager.test(test_steps, test_episodes=5, render=False)
         manager.update_aggregator(loss=loss, time_steps=time_steps)
 
         print(f"epoch ::: {e}  loss ::: {loss.numpy()}   avg env steps ::: {np.mean(time_steps)}")
 
         # Annealing epsilon
         if (e+1) % 5 == 0: 
-            new_epsilon = 0.9 * manager.kwargs['epsilon']
+            new_epsilon = 0.85 * manager.kwargs['epsilon']
             manager.set_epsilon(new_epsilon)
             print("New Epsilon: ", new_epsilon)
+        
 
     print("Done!")
     print("Testing optimized agent...")
 
-    manager.test(200, test_episodes=10, render=True, do_print=True)
+    manager.set_epsilon(0.0)
+    manager.test(test_steps, test_episodes=10, render=True, do_print=True)
