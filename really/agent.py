@@ -182,7 +182,7 @@ class Agent:
         v = model_out["value_estimate"]
         return v
 
-    def flowing_log_prob(self, state, action, return_entropy=True):
+    def flowing_log_prob(self, state, action, return_entropy=False):
         output = {}
         action = tf.cast(action, dtype=tf.float32)
         network_out = self.model(state)
