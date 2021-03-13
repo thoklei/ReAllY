@@ -25,7 +25,7 @@ class RunnerBox:
                 supported are: 'value_estimate', 'log_prob', 'monte_carlo'
 
     @kwargs:
-        action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+        action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', 'discrete_policy' or 'continuous_normal_diagonal'
         temperature: float, temperature for thomson sampling, defaults to 1
         epsilon: epsilon for epsilon greedy sampling, defaults to 0.95
         weights: weights of the model, not needed if input_shape is given

@@ -7,6 +7,7 @@ deep_q_target_cycle.py
 test_fun.py
 test.py
 a2c.py
+ppo.py
 
 progress
 progress_deep_q
