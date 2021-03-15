@@ -25,9 +25,9 @@ class Pi(tf.keras.Model):
         self.second_layer_neurons = 16
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu),
-            tf.keras.layers.Dense(2, use_bias=False, activation='tanh')]
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
+            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
+            tf.keras.layers.Dense(2, use_bias=False, kernel_regularizer='l2', activation='tanh')]
 
 
     def call(self, state):
@@ -38,7 +38,7 @@ class Pi(tf.keras.Model):
         return state
 
 
-class ValueEstimator(tf.keras.Model):
+class ValueEstimator(tf.keras.Sequential):
 
     def __init__(self, state_size, batch_size):
 
@@ -46,17 +46,16 @@ class ValueEstimator(tf.keras.Model):
         self.state_size = state_size
         self.second_layer_neurons = 16
 
-        self.layer_list = [
-            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(1)]
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation='relu', kernel_regularizer='l2', input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(1, kernel_regularizer='l2'))
 
 
-    def call(self, state):
+    # def call(self, state):
 
-        for layer in self.layer_list:
-            state = layer(state)
+    #     for layer in self.layer_list:
+    #         state = layer(state)
         
-        return state
+    #     return state
 
 
 class ModelWrapper(tf.keras.Model):
@@ -128,6 +127,7 @@ if __name__ == "__main__":
 
     batch_size = 1
     state_size = 8
+    gamma = 0.99
 
     model_kwargs = {
         "batch_size": batch_size,
@@ -161,11 +161,11 @@ if __name__ == "__main__":
     buffer_size = 30000
     test_steps = 250
     epochs = 10
-    sample_size = 4000
+    sample_size = 1000
     optim_batch_size = 1
     saving_after = 10
 
-    gamma = 0.9
+    
     learning_rate = 0.001
     optimizer = tf.keras.optimizers.Adam() #SGD(learning_rate, momentum=0.8)
     loss_function = tf.keras.losses.MSE
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
     # initilize progress aggregator
     manager.initialize_aggregator(
-        path=saving_path, saving_after=saving_after, aggregator_keys=["loss", "time_steps"]
+        path=saving_path, saving_after=saving_after, aggregator_keys=["loss", "time_steps", "reward"]
     )
 
     # initial testing:
@@ -218,23 +218,32 @@ if __name__ == "__main__":
         states = sample_dict['state'][:end]
         actions = sample_dict['action'][:end]
         new_states = sample_dict['state_new'][:end]
-        mc_rewards = sample_dict['monte_carlo'][:end]
+        rewards = sample_dict['reward'][:end]
+        mc_rewards = [ sum([gamma**j*r for j,r in enumerate(rewards[i:])]) for i in range(len(rewards)) ]
+        # mc_rewards = sample_dict['monte_carlo'][:end]
+
+        # print("Normal rewards: ", rewards)
+        # print("MC rewards: ", mc_rewards)
         
         if terminal: # TODO think about this
             R = agent.model(states[end])['value_estimate']
             mc_rewards.apend(gamma ** end * R)
 
-        r_sum = tf.reduce_sum(mc_rewards)
-        old_mcr = 0
         loss = 0
-        for s, a, sn, mc_r in zip(states, actions, new_states, mc_rewards): 
-            r_sum -= old_mcr
-            value = agent.model(tf.expand_dims(s, axis=0))['value_estimate']
-            old_mcr = mc_r
 
-            train_pi(a, s, r_sum, value, optimizer)
-            loss_v = train_v(agent, r_sum, s, optimizer)
-            loss +=loss_v
+        stormtrooper = tf.keras.models.clone_model(agent.model.value_network)
+
+        it = 1
+        for s, a, sn, mc_r in zip(states, actions, new_states, mc_rewards): 
+
+            value = stormtrooper(tf.expand_dims(s, axis=0))
+
+            train_pi(a, s, mc_r, value, optimizer)
+            loss_v = train_v(agent, mc_r, s, optimizer)
+
+            # old average * (n-1)/n + new value /n
+            loss = loss * (it-1)/it + loss_v / it
+            it += 1
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -246,20 +255,12 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
-        manager.update_aggregator(loss=loss_v, time_steps=time_steps)
+        time_steps, rewards = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
+       
+        manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
 
-        print(f"epoch ::: {e}  loss ::: {loss}   avg env steps ::: {np.mean(time_steps)}")
+        print(f"epoch ::: {e}  loss ::: {loss}   reward ::: {np.mean(rewards)}   avg env steps ::: {np.mean(time_steps)}")
 
-        # Annealing epsilon
-        # if e % 5 == 0: 
-        #     new_epsilon = 0.9 * manager.kwargs['epsilon']
-        #     manager.set_epsilon(new_epsilon)
-
-        # if e % saving_after == 0:
-        #     manager.save_model(saving_path, e)
-
-    # manager.load_model(saving_path)
     print("Done.")
     print("Testing optimized agent.")
 
