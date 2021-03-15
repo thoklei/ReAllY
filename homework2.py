@@ -35,7 +35,7 @@ class DQN(tf.keras.Model):
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
-            tf.keras.layers.Dense(n_actions, use_bias=False)]
+            tf.keras.layers.Dense(n_actions, kernel_regularizer='l2', use_bias=False)]
 
 
     @tf.function
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     agent = manager.get_agent()
 
     # circular buffer for avg env steps (used to stop training if agent is good)
-    mean_list = collections.deque(maxlen=5)
+    mean_list = collections.deque(maxlen=3)
 
     for e in range(epochs):
 
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         mean_list.append(np.mean(time_steps))
 
         # if performace was good 5 times in a row, stop training
-        if np.mean(mean_list) > 190:
+        if np.mean(mean_list) > 195:
             break
 
         # Annealing epsilon
