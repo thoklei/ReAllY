@@ -67,8 +67,10 @@ class ModelWrapper(tf.keras.Model):
         self.pi_network = Pi(state_size, batch_size)
         self.sigma = tf.constant(np.array([sigma1, sigma2]))
 
+
     # @tf.function
     def call(self, x):
+
         # obtain mu of value network
         mu = self.pi_network(x)
 
@@ -199,7 +201,6 @@ if __name__ == "__main__":
         # data = manager.get_data()
         # manager.store_in_buffer(data)
 
-        # sample data to optimize on from buffer
         sample_dict = manager.sample(1, from_buffer=False) # 
 
         # create and batch tf datasets
