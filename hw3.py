@@ -1,13 +1,10 @@
 import os
 import logging
-import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import ray
 from really import SampleManager
-from gridworlds import GridWorld
-from time import time_ns
 from really.utils import (
     dict_to_dataset, dict_to_dict_of_datasets
 )
@@ -43,8 +40,7 @@ class ValueEstimator(tf.keras.Sequential):
         self.state_size = state_size
         self.second_layer_neurons = 16
 
-        self.add(
-            tf.keras.layers.Dense(self.second_layer_neurons, activation="relu", input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation="relu", input_shape=(batch_size, state_size)))
         self.add(tf.keras.layers.Dense(32, activation="relu"))
         self.add(tf.keras.layers.Dense(1, use_bias=False))
 
@@ -63,6 +59,9 @@ class ModelWrapper(tf.keras.Model):
         self.value_network = ValueEstimator(state_size, batch_size)
         self.pi_network = Pi(state_size, batch_size)
         self.sigma = tf.constant([sigma1, sigma2], dtype=tf.float32)
+
+    def set_sigma(self, sig1, sig2):
+        self.sigma = tf.constant([sig1, sig2], tf.float32)
 
     @tf.function
     def call(self, x):
@@ -120,8 +119,8 @@ if __name__ == "__main__":
     model_kwargs = {
         "batch_size": batch_size,
         "state_size": state_size,
-        "sigma1": 0.1,
-        "sigma2": 0.1
+        "sigma1": 1.2,
+        "sigma2": 1.2
     }
 
     kwargs = {
@@ -137,7 +136,8 @@ if __name__ == "__main__":
     }
 
     # initialize
-    ray.init(log_to_driver=False)
+    ray.init(log_to_driver=False, num_gpus=2)
+
     manager = SampleManager(**kwargs)
 
     #######################
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     epochs = 100
     saving_after = 10
 
-    max_steps = 300
+    max_steps = 500
 
     learning_rate = 0.001
     optimizer = tf.keras.optimizers.Adam(learning_rate)  # SGD(learning_rate, momentum=0.8)
@@ -188,7 +188,7 @@ if __name__ == "__main__":
         # manager.store_in_buffer(data)
         # sample_dict = manager.sample(1, from_buffer=False)
 
-        states, actions, cumulative_mc_rewards = [], [], [],
+        states, actions, rewards = [], [], [],
 
         # get s0 and reshape it to make it batch size 1
         s = env.reset()
@@ -198,6 +198,7 @@ if __name__ == "__main__":
             # obtain the mus for both action and sample the action from a gaussian afterwards.
             mu = agent.model.pi_network(s)
             a = tf.random.normal(shape=(2,), mean=mu, stddev=agent.model.sigma)
+            a = tf.clip_by_value(a, clip_value_min=-1, clip_value_max=1)
 
             # take the step in the env
             next_s, reward, done, _ = env.step(a.numpy().reshape(2))
@@ -208,23 +209,24 @@ if __name__ == "__main__":
             actions.append(a)
             # if list is empty we only need the reward as first value.
             # else, we are discounting cumulatively to obtain mc_rewards.
-            cumulative_mc_rewards.append(reward if cumulative_mc_rewards == [] else cumulative_mc_rewards[-1] + (gamma ** i * reward))
+            rewards.append(reward) #if cumulative_mc_rewards == [] else cumulative_mc_rewards[-1] + (gamma ** i * reward))
             # new_states.append(next_s)
 
             s = next_s  # the posterior of today is tomorrows prior.
 
             if done:
                 # if we reach a terminal state our estimate for the remaining trajectory is 0.
-                cumulative_mc_rewards.append(0)
+                rewards.append(0)
                 break
 
         if not done:
             next_s = np.array(next_s).reshape((1, 8))  # bring it in shape :D
             # if we did not managed to reach a terminal state we will estimate the remaining trajectory.
             R = agent.model(next_s)['value_estimate']
-            cumulative_mc_rewards.append(float(R))
+            rewards.append(float(R))
 
-        cumulative_mc_rewards = tf.constant(cumulative_mc_rewards, tf.float32)
+        rewards = [sum([gamma ** j * r for j, r in enumerate(rewards[i:])]) for i in range(len(rewards))]
+        rewards = tf.constant(rewards, tf.float32)
         env.close()
 
         # create and batch tf datasets
@@ -259,7 +261,7 @@ if __name__ == "__main__":
         stormtrooper = tf.keras.models.clone_model(agent.model.value_network)
 
         it = 1
-        for s, a, mc_r in zip(states, actions, cumulative_mc_rewards):
+        for s, a, mc_r in zip(states, actions, rewards):
             value_estimate = stormtrooper(s)
 
             train_pi(s, a, mc_r, value_estimate, optimizer)
@@ -280,6 +282,11 @@ if __name__ == "__main__":
 
         # update aggregator
         if e % 10 == 0:  # every 10 epochs do:
+            if agent.model.sigma[0] - 0.2 < 0.1:
+                agent.model.set_sigma(0.1, 0.1)
+            else:
+                new_sigma = agent.model.sigma - 0.2
+                agent.model.sigma = new_sigma
             if e % 20 == 0:  # render test.
                 time_steps, rewards = manager.test(
                     test_steps,
@@ -292,7 +299,7 @@ if __name__ == "__main__":
                 # manager.save_model("./models", e, "LunarLander")
 
             # manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
-            print(f"\nepoch ::: {e}  loss ::: {loss}   reward ::: {np.sum(rewards)}   avg env steps ::: {np.mean(time_steps)}")
+            print(f"\nepoch ::: {e}  loss ::: {loss}   reward ::: {np.mean(rewards)}   avg env steps ::: {np.mean(time_steps)}")
 
     print("\nDone.")
     print("Testing optimized agent.")
