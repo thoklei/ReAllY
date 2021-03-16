@@ -13,6 +13,7 @@ from really.utils import (
 
 
 class MyModel(tf.keras.Model):
+
     def __init__(self, output_units=2):
 
         super(MyModel, self).__init__()
@@ -54,6 +55,9 @@ if __name__ == "__main__":
     if not os.path.exists("./logging/"):
         os.makedirs("logging")
 
+    if not os.path.exists("./progress_test/"):
+        os.makedirs("progress_test")
+
     kwargs = {
         "model": MyModel,
         "environment": "CartPole-v0",
@@ -74,7 +78,7 @@ if __name__ == "__main__":
     test_steps = 1000
     epochs = 20
     sample_size = 1000
-    optim_batch_size = 8
+    optim_batch_size = 32
     saving_after = 5
 
     # keys for replay buffer -> what you will need for optimization
@@ -142,7 +146,7 @@ if __name__ == "__main__":
             # you can save models
             manager.save_model(saving_path, e)
 
-    # and load mmodels
+    # and load models
     manager.load_model(saving_path)
     print("done")
     print("testing optimized agent")

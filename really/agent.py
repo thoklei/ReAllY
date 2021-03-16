@@ -13,9 +13,9 @@ class Agent:
     """
     Agent wrapper:
         @args
-            model: tf.keras.Model (or simply callable bit than some functionalities are not supported) returning dictionary with the possible keys: 'q_values' or 'mus' and 'sigmas' for continuius cases, optional 'value_estimate', containing tensors
+            model: tf.keras.Model (or simply callable bit than some functionalities are not supported) returning dictionary with the possible keys: 'q_values' or 'policy' or 'mus' and 'sigmas' for continuous policies, optional 'value_estimate', containing tensors
             weights: None or weights of the model
-            action_sampling_type: string, supported are 'thompson', 'epsilon_greedy' and 'continous_normal_diagonal'
+            action_sampling_type: string, supported are 'thompson', 'epsilon_greedy', 'discrete_policy' and 'continuous_normal_diagonal'
             epsilon: float for epsilon greedy sampling
             temperature: float for thompson sampling
             value_estimate: boolean if agent returns value estimate
@@ -32,6 +32,7 @@ class Agent:
         value_estimate=False,
         input_shape=None,
         model_kwargs={},
+        test=False,
     ):
         super(Agent, self).__init__
         #logging.basicConfig(
@@ -48,6 +49,7 @@ class Agent:
         self.temperature = temperature
         self.epsilon = epsilon
         self.value_estimate = value_estimate
+        self.test = test
 
 
     def set_weights(self, weights):
@@ -72,6 +74,12 @@ class Agent:
         output = {}
         # creating network dict
         network_out = self.model(state)
+
+        if self.test:
+            old_e = self.epsilon
+            self.epsilon = 0
+            old_t = self.temperature
+            self.temperature = 0.000001
 
         if self.action_sampling_type == "epsilon_greedy":
             logits = network_out["q_values"]
@@ -109,7 +117,7 @@ class Agent:
                     [probs[i][a] for i, a in zip(range(logits.shape[0]), action)]
                 )
 
-        elif self.action_sampling_type == "continous_normal_diagonal":
+        elif self.action_sampling_type == "continuous_normal_diagonal":
 
             mus, sigmas = network_out["mu"].numpy(), network_out["sigma"].numpy()
             action = norm.rvs(mus, sigmas)
@@ -119,12 +127,37 @@ class Agent:
 
             if return_log_prob:
                 output["log_probability"] = np.sum(norm.logpdf(action, mus, sigmas))
+
+        elif self.action_sampling_type == "discrete_policy":
+            logits = network_out["policy"]
+            if self.test:
+                action = np.argmax(logits, axis=-1)
+            else:
+                action = tf.squeeze(tf.random.categorical(logits,1)).numpy()
+            output["action"] = action
+            action = action.tolist()
+            if tf.is_tensor(logits):
+                logits = logits.numpy()
+            if return_log_prob:
+                if logits.shape[0]>1:
+                    output["log_probability"] = np.log(
+                        [logits[i][a] for i, a in zip(range(logits.shape[0]), action)]
+                        )
+                else:
+                    output["log_probability"] = np.log(
+                        [logits[0][action]]
+                        )
+
         else:
             # logging.warning(f'unsupported sampling method {self.actin_sampling_type}')
             raise NotImplemented
         # pass on value estimate if there
         if self.value_estimate:
             output["value_estimate"] = network_out["value_estimate"]
+
+        if self.test:
+            self.epsilon = old_e
+            self.temperature = old_t
 
         return output
 
@@ -144,11 +177,18 @@ class Agent:
         x = tf.gather(q_values, actions, batch_dims=1)
         return x
 
-    def flowing_log_prob(self, state, action, return_entropy=True):
+    def v(self, x):
+        model_out=self.model(x)
+        v = model_out["value_estimate"]
+        return v
+
+    def flowing_log_prob(self, state, action, return_entropy=False):
         output = {}
         action = tf.cast(action, dtype=tf.float32)
         network_out = self.model(state)
-        if self.action_sampling_type == 'continous_normal_diagonal':
+
+        network_out = self.model(state)
+        if self.action_sampling_type == 'continuous_normal_diagonal':
             mus, sigmas = network_out["mu"], network_out["sigma"]
             dist = tf.compat.v1.distributions.Normal(mus, sigmas)
             log_prob = dist.log_prob(action)
@@ -156,7 +196,59 @@ class Agent:
                 firs_step = tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas))
                 second_step = tf.constant(0.5, dtype=tf.float32) * tf.math.log(2*tf.constant(np.pi, dtype=tf.float32))
                 entropy = firs_step * second_step
-            return log_prob, entropy
+                return log_prob, entropy
+            return log_prob
+
+        elif self.action_sampling_type == "thompson":
+            logits = network_out["q_values"]
+            logits = tf.nn.softmax(logits)
+            action = tf.cast(action, dtype=tf.int64).numpy().tolist()
+            if logits.shape[0]>1:
+                log_prob = tf.math.log(
+                    [logits[i][a] for i, a in zip(range(logits.shape[0]), action)]
+                    )
+            else:
+                log_prob = tf.math.log(
+                    [logits[0][action]]
+                    )
+            log_prob = tf.expand_dims(log_prob, -1)
+            if return_entropy:
+                entropy = -tf.reduce_sum(logits * tf.math.log(logits), axis=-1)
+                entropy = tf.expand_dims(entropy, -1)
+                return log_prob, entropy
+            return log_prop
+
+
+        elif self.action_sampling_type == "discrete_policy":
+            logits = network_out["policy"]
+
+            action = tf.cast(action, dtype=tf.int64).numpy().tolist()
+            if logits.shape[0]>1:
+                log_prob = tf.math.log(
+                    [logits[i][a] for i, a in zip(range(logits.shape[0]), action)]
+                    )
+            else:
+                log_prob = tf.math.log(
+                    [logits[0][action]]
+                    )
+            log_prob = tf.expand_dims(log_prob, -1)
+            if return_entropy:
+                entropy = -tf.reduce_sum(logits * tf.math.log(logits), axis=-1)
+                entropy = tf.expand_dims(entropy, -1)
+                return log_prob, entropy
+            else: return log_prob
+
+
+        elif self.action_sampling_type == 'epsilon_greedy':
+            logits = network_out["q_values"]
+            if tf.is_tensor(logits):
+                logits = logits.numpy()
+            log_prob = np.asarray(
+                    [np.log(self.epsilon+0.00000001)] * logits.shape[0]
+                    )
+            return tf.cast(tf.expand_dims(log_prob, -1), dtype=tf.float32)
+
+
         else:
             print(f"flowing log probabilities not yet implemented for sampling type {self.action_sampling_type}")
             raise NotImplemented

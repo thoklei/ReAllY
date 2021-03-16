@@ -7,6 +7,7 @@ deep_q_target_cycle.py
 test_fun.py
 test.py
 a2c.py
+ppo.py
 
 progress
 progress_deep_q
@@ -16,7 +17,7 @@ progress_deep_q_target_cycle
 progress_tabq
 progress_a2c
 grid_q.py
-progress_test
+progress_test/
 *.log
 
 # Byte-compiled / optimized / DLL files

@@ -29,7 +29,7 @@ Using the sample manager, an evaluation aggregator can be initialized where the 
 
 ## Usage
 ### Model
-The model **needs to output a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or 'mu' and 'sigma' if it is a continous model. 
+The model **needs to output a dictionary** with either the keys 'q_values' (and optional 'v_estimate') or in case of policy optimization 'policy' or mu' and 'sigma' if it is a continous model. 
 
 ### Main Process
 - ray needs to be initialized before the sample manager is used (ray.init(log_to_driver=False) to suppress logs)
@@ -46,7 +46,7 @@ The sample manager should be initalized from the main process.
         total_steps: int, how many steps to collect for the exporence replay
         returns: list of strings specifying what extra information (besides state, action, reward, new_state, not_done) is to be returned by the experience replay
             supported are: 'value_estimate', 'log_prob', 'monte_carlo', defaults to empty list
-        actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+        action_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', 'discrete_policy' or 'continous_normal_diagonal'
 
     @kwargs:
         model_kwargs: dict, optional model initialization specifications
@@ -139,6 +139,7 @@ The sample manager should be initalized from the main process.
             render: [boolean] whether to render the environmend while testing
             do_print: [boolean] whether to print the mean evaluation measure
           -> returns list of mean time steps or rewards or both
+          -> when testing, all action sampling types will be set to greedy mode
         
       manager.initialize_aggregator(self, path, saving_after=10, aggregator_keys=['loss'])
         args:
@@ -150,7 +151,20 @@ The sample manager should be initalized from the main process.
        manager.update_aggregator(**kwargs)
        -> takes a list of named arguments where the names should match the aggregators keys and refers to a list of values to be stored in the aggregator
        
-       
+ ##### Prebuilt agent functionalities
+        agent.act(states)
+            -> acts according to the policy, returns actions
+        
+        agent.v(states)
+            -> returns the value estimate
+        
+        agent.q_val(states, actions)
+        
+        agent.max_q(states)
+        
+        agent.flowing_log_prob(states, actions, return_entropy=False)
+            -> returns log probabilities with gradient flow 
+            -> optional entropy
     
    All funcionalities are demonstrated in the showcase.py script.
     

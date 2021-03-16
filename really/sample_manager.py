@@ -20,13 +20,13 @@ class SampleManager:
 
     """
     @args:
-        model: model Object
+        model: model Object, model: tf.keras.Model (or model imitating a tf model) returning dictionary with the possible keys: 'q_values' or 'policy' or 'mus' and 'sigmas' for continuous policies, optional 'value_estimate', containing tensors
         environment: string specifying gym environment or object of custom gym-like (implementing the same methods) environment
         num_parallel: int, number of how many agents to run in parall
         total_steps: int, how many steps to collect for the experience replay
         returns: list of strings specifying what is to be returned by the box
             supported are: 'value_estimate', 'log_prob', 'monte_carlo'
-        actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', or 'continous_normal_diagonal'
+        actin_sampling_type: string, type of sampling actions, supported are 'epsilon_greedy', 'thompson', 'discrete_policy' or 'continuous_normal_diagonal'
 
     @kwargs:
         model_kwargs: dict, optional model initialization specifications
@@ -54,7 +54,6 @@ class SampleManager:
         self.environment = environment
         self.num_parallel = num_parallel
         self.total_steps = total_steps
-        self.kwargs = kwargs
         self.buffer = None
 
         # create gym / custom gym like environment
@@ -64,7 +63,7 @@ class SampleManager:
             env_kwargs = {}
             if "env_kwargs" in kwargs.keys():
                 env_kwargs = kwargs["env_kwargs"]
-                self.kwargs.pop("env_kwargs")
+                kwargs.pop("env_kwargs")
             self.env_instance = self.env_creator(self.environment, **env_kwargs)
 
 
@@ -83,6 +82,8 @@ class SampleManager:
             random_weights = self.initialize_weights(self.model, kwargs['input_shape'], kwargs['model_kwargs'])
             kwargs['weights'] = random_weights
 
+        kwargs['test'] = False
+        self.kwargs = kwargs
         ## some checkups
 
         assert self.num_parallel > 0, "num_parallel hast to be greater than 0!"
@@ -91,12 +92,12 @@ class SampleManager:
         # check action sampling type
         if "action_sampling_type" in kwargs.keys():
             type = kwargs["action_sampling_type"]
-            if type not in ["thompson", "epsilon_greedy", "continous_normal_diagonal"]:
+            if type not in ["thompson", "epsilon_greedy", "discrete_policy", "continuous_normal_diagonal"]:
                 print(
-                    f"unsupported sampling type: {type}. assuming thompson sampling instead."
+                    f"unsupported sampling type: {type}. assuming sampling from a discrete policy instead."
                 )
-                self.kwargs["action_sampling_type"] = "thompson"
-            if type == 'continous_normal_diagonal':
+                self.kwargs["action_sampling_type"] = "discrete_policy"
+            if type == 'continuous_normal_diagonal':
                 self.discrete_env = False
                 self.kwargs['discrete_env'] = False
 
@@ -274,10 +275,7 @@ class SampleManager:
     def get_agent(self, test=False):
 
         if test:
-            old_e = self.kwargs["epsilon"]
-            old_t = self.kwargs["temperature"]
-            self.kwargs["epsilon"] = 0
-            self.kwargs["temperature"] = 0.0001
+            self.kwargs['test'] = True
 
         # get agent specifications from runner box
         runner_box = RunnerBox.remote(
@@ -292,8 +290,7 @@ class SampleManager:
         agent = Agent(self.model, **agent_kwargs)
 
         if test:
-            self.kwargs["epsilon"] = old_e
-            self.kwargs["temperature"] = old_t
+            self.kwargs['test'] = False
 
         return agent
 
@@ -325,7 +322,6 @@ class SampleManager:
 
         env = self.env_instance
         agent = self.get_agent(test=True)
-        # agent.epsilon = 1
 
         # get evaluation specs
         return_time = False
@@ -344,7 +340,7 @@ class SampleManager:
             rewards = []
         else:
             print(
-                f"unrceognized evaluation measure: {evaluation_measure} \n Change to 'time', 'reward' or 'time_and_reward'."
+                f"unrecognized evaluation measure: {evaluation_measure}\n Change to 'time', 'reward' or 'time_and_reward'."
             )
             raise ValueError
 

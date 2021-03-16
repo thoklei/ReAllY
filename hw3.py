@@ -25,9 +25,9 @@ class Pi(tf.keras.Model):
         self.second_layer_neurons = 16
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
-            tf.keras.layers.Dense(2, use_bias=False, kernel_regularizer='l2', activation='tanh')]
+            tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)),
+            tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh'),
+            tf.keras.layers.Dense(2, use_bias=False, activation='tanh')]
 
 
     def call(self, state):
@@ -46,8 +46,8 @@ class ValueEstimator(tf.keras.Sequential):
         self.state_size = state_size
         self.second_layer_neurons = 16
 
-        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation='relu', kernel_regularizer='l2', input_shape=(batch_size, state_size)))
-        self.add(tf.keras.layers.Dense(1, kernel_regularizer='l2'))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(1, use_bias=False))
 
 
     # def call(self, state):
@@ -142,10 +142,9 @@ if __name__ == "__main__":
         "returns": ['monte_carlo'], 
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 1,
-        "total_steps": 50, # how many total steps we do
-        "num_steps": 50,
-        "action_sampling_type": "continous_normal_diagonal",
-        "epsilon": 0.9
+        "total_steps": 400, # how many total steps we do
+        "num_steps": 400,
+        "action_sampling_type": "continuous_normal_diagonal",
     }
 
     # initialize
@@ -158,10 +157,9 @@ if __name__ == "__main__":
     #######################
     saving_path = os.getcwd() + "/progress_test"
 
-    buffer_size = 30000
+    buffer_size = 42
     test_steps = 250
-    epochs = 10
-    sample_size = 1000
+    epochs = 100
     optim_batch_size = 1
     saving_after = 10
 
@@ -209,25 +207,31 @@ if __name__ == "__main__":
         def get_end(data):
             for i, d in enumerate(data):
                 if d == 0:
-                    return i, True
+                    return i+1, True
             return len(data)-1, False
+
+        #print("Len not_done: ", len(sample_dict['not_done']), " Len states: ", len(sample_dict['state'])) 
         
         end, terminal = get_end(sample_dict['not_done'])
 
 
         states = sample_dict['state'][:end]
+        #print("length of states: ", len(states))
+        #print("end: ", end, terminal)
         actions = sample_dict['action'][:end]
         new_states = sample_dict['state_new'][:end]
         rewards = sample_dict['reward'][:end]
+        print(np.min(sample_dict['reward']), " max: ", np.max(sample_dict['reward']))
+        print("nachher:", np.min(rewards), " max: ", np.max(rewards))
         mc_rewards = [ sum([gamma**j*r for j,r in enumerate(rewards[i:])]) for i in range(len(rewards)) ]
         # mc_rewards = sample_dict['monte_carlo'][:end]
 
         # print("Normal rewards: ", rewards)
         # print("MC rewards: ", mc_rewards)
         
-        if terminal: # TODO think about this
-            R = agent.model(states[end])['value_estimate']
-            mc_rewards.apend(gamma ** end * R)
+        if terminal:
+            R = agent.model(np.reshape(states[end-1], (1,8)))['value_estimate']
+            mc_rewards.append(gamma ** (end-1) * R)
 
         loss = 0
 
@@ -235,6 +239,7 @@ if __name__ == "__main__":
 
         it = 1
         for s, a, sn, mc_r in zip(states, actions, new_states, mc_rewards): 
+            #print("action:", a)
 
             value = stormtrooper(tf.expand_dims(s, axis=0))
 
@@ -255,12 +260,19 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        time_steps, rewards = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
+        if e % 10 == 0:
+            time_steps, rewards = manager.test(test_steps, test_episodes=10, render=True, evaluation_measure="time_and_reward")
+            print("should be 10", len(rewards))
+
+            manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
+
+            print(f"epoch ::: {e}  loss ::: {loss}   reward ::: {np.sum(rewards)}   avg env steps ::: {np.mean(time_steps)}")
+
+        # else:
+        #     time_steps, rewards = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
+        #     print("should be 100", len(rewards))
        
-        manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
-
-        print(f"epoch ::: {e}  loss ::: {loss}   reward ::: {np.mean(rewards)}   avg env steps ::: {np.mean(time_steps)}")
-
+       
     print("Done.")
     print("Testing optimized agent.")
 
