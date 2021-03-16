@@ -18,6 +18,9 @@ progress_a2c
 grid_q.py
 progress_test
 *.log
+gridworlds/gridworlds/__pycache__
+gridworlds/gridworlds/envs/__pycache__
+
 
 # Byte-compiled / optimized / DLL files
 really/__pycache__
