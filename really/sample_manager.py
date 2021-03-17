@@ -367,13 +367,13 @@ class SampleManager:
                     if return_time:
                         time_steps.append(t)
                     if return_reward:
-                        rewards.append(np.mean(reward_per_episode))
+                        rewards.append(np.sum(reward_per_episode))
                     break
                 if t == max_steps - 1:
                     if return_time:
                         time_steps.append(t)
                     if return_reward:
-                        rewards.append(np.mean(reward_per_episode))
+                        rewards.append(np.sum(reward_per_episode))
                     break
 
         env.close()
