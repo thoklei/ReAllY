@@ -24,12 +24,13 @@ class Pi(tf.keras.Model):
         self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
-        self.reg = tf.keras.regularizers.L2(l2=0.01)
+        self.reg = tf.keras.regularizers.L2(l2=0.001)
+        # tf.keras.layers.LeakyReLU(alpha=0.01)
 
         self.layer_list = [
-            tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', kernel_regularizer='l2', input_shape=(batch_size, state_size)),
-            tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh', kernel_regularizer='l2'),
-            tf.keras.layers.Dense(2, use_bias=False, activation='tanh', kernel_regularizer='l2')]
+            tf.keras.layers.Dense(self.middle_layer_neurons, kernel_regularizer=self.reg, activation='relu', input_shape=(batch_size, state_size)),
+            tf.keras.layers.Dense(self.second_layer_neurons, kernel_regularizer=self.reg, activation='relu'),
+            tf.keras.layers.Dense(2, use_bias=False, kernel_regularizer=self.reg,activation='tanh')]
 
 
     def call(self, state):
@@ -49,8 +50,8 @@ class ValueEstimator(tf.keras.Sequential):
         self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
-        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation='tanh', input_shape=(batch_size, state_size)))
-        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation='tanh'))
+        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation='relu', input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation='relu'))
         self.add(tf.keras.layers.Dense(1, use_bias=False))
 
 
@@ -81,7 +82,7 @@ class ModelWrapper(tf.keras.Model):
 
 
 
-def train_pi(action, state, value, value_estimate, opt):
+def train_pi(agent, action, state, value, value_estimate, opt):
     """
     Trains the Policy Network.
 
@@ -91,7 +92,16 @@ def train_pi(action, state, value, value_estimate, opt):
     value_estimate = the estimated value, i.e. output of value network, tensor of shape (32,)
     opt = the optimizer
     """
-    factor = value - tf.cast(tf.squeeze(value_estimate), tf.float64)
+    
+    value = np.array(value)
+    value_estimate = tf.squeeze(value_estimate)
+
+    #print("Value in pi: ", value)
+    #print("Value estimate in pi: ", value_estimate)
+
+    factor = value - tf.cast(value_estimate, tf.float64)
+
+    #print("Factor in pi: ", factor)
 
     with tf.GradientTape() as tape:
 
@@ -99,29 +109,43 @@ def train_pi(action, state, value, value_estimate, opt):
         
         tfd = tfp.distributions
         dist = tfd.Normal(loc=mue, scale=tf.cast(agent.model.sigma, tf.float64))
-        prob = dist.cdf(action)
+        prob = dist.prob(action)
+        #print("Action: ", action, "Mue:", mue, " prob: ", prob)
 
-        target = tf.math.log(prob)
+        target = -1 * tf.math.log(prob)
+
+        #print("Target in pi", target)
 
         #print("Factor:", factor)
         #print("target: ", target)
 
-        weighted = tf.math.multiply(tf.transpose(target), factor)
+        regularizer_loss = sum(tf.cast(agent.model.pi_network.losses, tf.float64))
 
+        weighted = tf.math.multiply(tf.transpose(target), factor) 
+        #print("Weighted: ", tf.reduce_mean(weighted))
+        #print("reg loss: ", tf.reduce_mean(regularizer_loss))
+        weighted = weighted + regularizer_loss
+
+        # print("Regularizer loss: ", regularizer_loss)
         #print("weighted: ", weighted)
 
     gradients = tape.gradient(weighted, agent.model.pi_network.trainable_variables)
 
-    opt.apply_gradients(zip(-1 * gradients, agent.model.pi_network.trainable_variables))
+    opt.apply_gradients(zip(gradients, agent.model.pi_network.trainable_variables))
 
 
-def train_v(agent, r_sum, state, opt):
+def train_v(agent, state, r_sum, opt):
 
     with tf.GradientTape() as tape:
 
         val = agent.model.value_network(state)
 
-        loss = tf.keras.losses.MSE(r_sum, val)
+        #print("state-shape: ", state.shape, " val-shape: ", val.shape)
+        #print("y_true: ", r_sum)
+        #print("pred: ", val)
+        loss = tf.keras.losses.MSE(r_sum, tf.squeeze(val)) #+ sum(tf.cast(agent.model.value_network.losses, tf.float32))
+
+        #print("loss in v:", loss)
     gradients = tape.gradient(loss, agent.model.value_network.trainable_variables)
     opt.apply_gradients(zip(gradients, agent.model.value_network.trainable_variables))
 
@@ -135,14 +159,14 @@ if __name__ == "__main__":
 
     batch_size = 32
     state_size = 8
-    gamma = 0.99
+    gamma = 0.95
 
 
     model_kwargs = {
         "batch_size": batch_size,
         "state_size": state_size,
-        "sigma1": 1.0,
-        "sigma2": 0.6
+        "sigma1": 0.7,
+        "sigma2": 0.4
     }
 
     kwargs = {
@@ -152,7 +176,8 @@ if __name__ == "__main__":
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 2,
         "total_steps": 1000, # how many total steps we do
-        "num_steps": 1000,
+        #"num_steps": 500,
+        "num_episodes": 10,
         "action_sampling_type": "continuous_normal_diagonal",
     }
 
@@ -166,7 +191,6 @@ if __name__ == "__main__":
     #######################
     saving_path = os.getcwd() + "/progress_test"
 
-    buffer_size = 42
     test_steps = 250
     epochs = 250
     saving_after = 10
@@ -204,34 +228,44 @@ if __name__ == "__main__":
 
     agent.model.build((batch_size,8))
     for e in range(epochs):
-        print("Working on epoch",e)
+        #print("Working on epoch",e)
 
         # data = manager.get_data()
         # manager.store_in_buffer(data)
 
         sample_dict = manager.sample(sample_size, from_buffer=False) # 
+        print("Total steps: ", len(sample_dict['not_done']))
+        print("Episodes: ", len(sample_dict['not_done']) - np.sum(sample_dict['not_done']))
+
+        # for idx, (action, reward, not_done) in enumerate(zip(sample_dict['action'], sample_dict['reward'], sample_dict['not_done'])):
+
+        #     print(idx,": Action:",action," Reward:", reward, " Not Done:", not_done)
 
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=batch_size)
 
         it = 1
         loss = 0
-        for s, a, sn, mc_r in zip(data_dict['state'], data_dict['action'], data_dict['state_new'], data_dict['monte_carlo']): 
-            
-            # print("state:", s)
+        for s, a, sn, mc_r, r, nd in zip(data_dict['state'], data_dict['action'], data_dict['state_new'], data_dict['monte_carlo'], data_dict['reward'], data_dict['not_done']): 
 
-            value = agent.model.value_network(tf.expand_dims(s, axis=0))
+            #print("R: ",r," ND: ",nd)
+            mc_r = r.numpy() + nd.numpy() * gamma * tf.squeeze(agent.model.value_network(sn)).numpy()
 
-            train_pi(a, s, mc_r, value, optimizer)
-            loss_v = np.mean(train_v(agent, mc_r, s, optimizer))
+            #print("estimate: ", mc_r)
+            value = agent.model.value_network(s)
+            #print("Value: ", value)
+            #print("Comparison:", np.mean( np.sqrt((mc_r - value)**2)))
+
+            train_pi(agent, a, s, mc_r, value, optimizer)
+            loss_v = np.mean(train_v(agent, s, mc_r, optimizer))
 
             # old average * (n-1)/n + new value /n
             loss = loss * (it-1)/it + loss_v / it
             it += 1
 
-        print("Sigma: ", agent.model.sigma)
-        manager.kwargs["model_kwargs"]["sigma1"] = max(manager.kwargs["model_kwargs"]["sigma1"] * 0.99, 0.1)
-        manager.kwargs["model_kwargs"]["sigma2"] = max(manager.kwargs["model_kwargs"]["sigma2"] * 0.98, 0.05)
+        #print("Sigma: ", agent.model.sigma)
+        manager.kwargs["model_kwargs"]["sigma1"] = max(manager.kwargs["model_kwargs"]["sigma1"] * 0.99, 0.05)
+        manager.kwargs["model_kwargs"]["sigma2"] = max(manager.kwargs["model_kwargs"]["sigma2"] * 0.99, 0.05)
 
         # update with new weights
         new_weights = agent.model.get_weights()
@@ -243,18 +277,14 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # update aggregator
-        if (e+1) % 10 == 0:
+        if (e+1) % 5 == 0:
             time_steps, rewards = manager.test(test_steps, test_episodes=10, render=True, evaluation_measure="time_and_reward")
+        else:
+            time_steps, rewards = manager.test(test_steps, test_episodes=10, render=False, evaluation_measure="time_and_reward")
 
-            manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
+        manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
 
-            print(f"epoch ::: {e}  loss ::: {loss}   reward ::: {np.sum(rewards)}   avg env steps ::: {np.mean(time_steps)}")
-
-            # annealing sigma
-            
-        # else:
-        #     time_steps, rewards = manager.test(test_steps, render=False, evaluation_measure="time_and_reward")
-        #     print("should be 100", len(rewards))
+        print(f"epoch: {e}    loss: {loss}    reward: {np.mean(rewards)}    avg env steps: {np.mean(time_steps)}")
        
        
     print("Done.")

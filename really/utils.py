@@ -36,7 +36,7 @@ def dict_to_dict_of_datasets(data_dict, batch_size=None):
     for k in data_dict.keys():
         dataset_dict[k] = tf.data.Dataset.from_tensor_slices(data_dict[k])
         if batch_size is not None:
-            dataset_dict[k] = dataset_dict[k].batch(batch_size, drop_remainder=True)
+            dataset_dict[k] = dataset_dict[k].batch(batch_size, drop_remainder=False)
 
     return dataset_dict
 
