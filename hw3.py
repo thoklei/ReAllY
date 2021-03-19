@@ -27,8 +27,8 @@ class Pi(tf.keras.Sequential):
 
         super(Pi, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 32
-        self.second_layer_neurons = 16
+        self.middle_layer_neurons = 48
+        self.second_layer_neurons = 32
 
         self.reg = tf.keras.regularizers.L2(l2=0.1)
 
@@ -50,8 +50,8 @@ class ValueEstimator(tf.keras.Sequential):
 
         super(ValueEstimator, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 32
-        self.second_layer_neurons = 16
+        self.middle_layer_neurons = 48
+        self.second_layer_neurons = 32
 
         self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05), input_shape=(batch_size, state_size)))
         self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
@@ -129,8 +129,8 @@ def train_pi(agent, action, state, value, value_estimate, opt):
         # calculate objective as advantage-weighted target
         objective = tf.math.multiply(tf.transpose(target), advantage) 
         
-        # combine objective with regularizer loss
-        objective = objective + regularizer_loss
+        # combine objective with regularizer loss and entropy regularization
+        objective = objective + regularizer_loss + tf.transpose(target)
 
     # calculate and apply gradients
     gradients = tape.gradient(objective, agent.model.pi_network.trainable_variables)
@@ -182,8 +182,9 @@ if __name__ == "__main__":
         "model_kwargs": model_kwargs,
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 2,
-        "total_steps": 1000, # how many total steps to do
-        "num_episodes": 10, # we prefer few full episodes (that get to the reward) over many short ones
+        "total_steps": 1200, # how many total steps to do
+        "num_steps": 320,
+        #"num_episodes": 10, # we prefer few full episodes (that get to the reward) over many short ones
         "action_sampling_type": "continuous_normal_diagonal",
     }
 
