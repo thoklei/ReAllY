@@ -14,6 +14,7 @@ from really.utils import (
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+
 # Policy Network (Actor)
 class Pi(tf.keras.Sequential):
 
@@ -32,8 +33,11 @@ class Pi(tf.keras.Sequential):
 
         self.reg = tf.keras.regularizers.L2(l2=0.1)
 
-        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activity_regularizer=self.reg, activation=tf.keras.layers.LeakyReLU(alpha=0.05), input_shape=(batch_size, state_size)))
-        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activity_regularizer=self.reg, activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
+        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activity_regularizer=self.reg,
+                                       activation=tf.keras.layers.LeakyReLU(alpha=0.05),
+                                       input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activity_regularizer=self.reg,
+                                       activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
         self.add(tf.keras.layers.Dense(2, use_bias=False, activity_regularizer=self.reg, activation='tanh'))
 
 
@@ -53,14 +57,15 @@ class ValueEstimator(tf.keras.Sequential):
         self.middle_layer_neurons = 48
         self.second_layer_neurons = 32
 
-        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05), input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05),
+                                       input_shape=(batch_size, state_size)))
         self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
         self.add(tf.keras.layers.Dense(1, use_bias=False))
 
 
 # full A2C model
 class ModelWrapper(tf.keras.Model):
-        
+
     def __init__(self, state_size, batch_size, sigma1=1.0, sigma2=0.7):
         """
         Constructor for A2C.
@@ -75,9 +80,7 @@ class ModelWrapper(tf.keras.Model):
         self.pi_network = Pi(state_size, batch_size)
         self.sigma = tf.constant(np.array([sigma1, sigma2]))
 
-
     def call(self, x):
-
         # obtain mu of policy network
         mu = self.pi_network(x)
 
@@ -102,7 +105,7 @@ def train_pi(agent, action, state, value, value_estimate, opt):
     value_estimate :    the estimated value, i.e. output of value_net(state), tensor of shape (batch_size,)
     opt            :    the optimizer
     """
-    
+
     value = np.array(value)
     value_estimate = tf.squeeze(value_estimate)
 
@@ -111,10 +114,9 @@ def train_pi(agent, action, state, value, value_estimate, opt):
     advantage = value - tf.cast(value_estimate, tf.float64)
 
     with tf.GradientTape() as tape:
-
         # obtain mue for action from actor
         mue = tf.cast(agent.model.pi_network(state), tf.float64)
-        
+
         # calculate probability of action
         tfd = tfp.distributions
         dist = tfd.Normal(loc=mue, scale=tf.cast(agent.model.sigma, tf.float64))
@@ -127,8 +129,8 @@ def train_pi(agent, action, state, value, value_estimate, opt):
         regularizer_loss = sum(tf.cast(agent.model.pi_network.losses, tf.float64))
 
         # calculate objective as advantage-weighted target
-        objective = tf.math.multiply(tf.transpose(target), advantage) 
-        
+        objective = tf.math.multiply(tf.transpose(target), advantage)
+
         # combine objective with regularizer loss and entropy regularization
         objective = objective + regularizer_loss + tf.transpose(target)
 
@@ -148,18 +150,34 @@ def train_v(agent, state, true_value, opt):
     """
 
     with tf.GradientTape() as tape:
-
         # obtain current value estimate
         val = agent.model.value_network(state)
 
         # calculate loss as MSE between current estimate and true value
-        loss = tf.keras.losses.MSE(true_value, tf.squeeze(val)) 
+        loss = tf.keras.losses.MSE(true_value, tf.squeeze(val))
 
-    # calculate and apply gradients
+        # calculate and apply gradients
     gradients = tape.gradient(loss, agent.model.value_network.trainable_variables)
     opt.apply_gradients(zip(gradients, agent.model.value_network.trainable_variables))
 
     return loss
+
+
+def add_timeout_penalty(dict, penalty):
+
+    dict["reward"] = np.array(dict["reward"])
+    dict["not_done"] = np.array(dict["not_done"])
+    try:
+        dict["reward"][
+            np.logical_and(
+                np.logical_and(-20 < dict["reward"], dict["reward"] < 20),
+                dict["not_done"] == 0)
+        ] = penalty
+        if np.min(dict["reward"]) == -101:
+            print("Penalty applied")
+    except Exception as e:
+        print(e)
+    return dict
 
 
 if __name__ == "__main__":
@@ -169,7 +187,7 @@ if __name__ == "__main__":
 
     batch_size = 32
     state_size = 8
-    
+
     model_kwargs = {
         "batch_size": batch_size,
         "state_size": state_size,
@@ -203,8 +221,10 @@ if __name__ == "__main__":
     saving_after = 10
     sample_size = 1000
     gamma = 0.9
+    time_out_penalty = -101
 
-    optimizer = tf.keras.optimizers.Adam() 
+    optimizer_v = tf.keras.optimizers.Adam()
+    optimizer_pi = tf.keras.optimizers.Adam()
 
     ########################
     ## </Hyperparameters> ##
@@ -217,27 +237,32 @@ if __name__ == "__main__":
 
     # initial testing:
     print("Establishing baseline.")
-    manager.test(test_steps, test_episodes=3, do_print=True, render=True)
+    # manager.test(test_steps, test_episodes=3, do_print=True, render=True)
 
     print("Training the agent.")
 
     # get initial agent
     agent = manager.get_agent()
-    agent.model.build((batch_size,state_size))
+    agent.model.build((batch_size, state_size))
 
     # main training loop
     for e in range(epochs):
 
         # sample trajectories from current policy
         sample_dict = manager.sample(sample_size, from_buffer=False)
-        
+        x = np.array((sample_dict["reward"], sample_dict["not_done"]))
+        # x = x[:, x[1] == 0]
+        # if x[x != -100].any():
+        #     print(x)
+        sample_dict = add_timeout_penalty(sample_dict, time_out_penalty)
+
         # create and batch tf datasets
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=batch_size)
 
         it = 1
         loss = 0
-        for s, a, sn, r, nd in zip(data_dict['state'], data_dict['action'], data_dict['state_new'], data_dict['reward'], data_dict['not_done']): 
-
+        for s, a, sn, r, nd in zip(data_dict['state'], data_dict['action'], data_dict['state_new'], data_dict['reward'],
+                                   data_dict['not_done']):
             # calculate true value
             value = r.numpy() + nd.numpy() * gamma * tf.squeeze(agent.model.value_network(sn)).numpy()
 
@@ -245,13 +270,13 @@ if __name__ == "__main__":
             value_estimate = agent.model.value_network(s)
 
             # train policy net
-            train_pi(agent, a, s, value, value_estimate, optimizer)
+            train_pi(agent, a, s, value, value_estimate, optimizer_pi)
 
             # train value net
-            loss_v = np.mean(train_v(agent, s, value, optimizer))
+            loss_v = np.mean(train_v(agent, s, value, optimizer_v))
 
             # averagelosses according to old average * (n-1)/n + new value /n
-            loss = loss * (it-1)/it + loss_v / it
+            loss = loss * (it - 1) / it + loss_v / it
             it += 1
 
         # Decaying sigma, but not smaller than 0.05
@@ -260,7 +285,7 @@ if __name__ == "__main__":
 
         # update with new weights
         new_weights = agent.model.get_weights()
-        
+
         agent.set_weights(new_weights)
         manager.set_agent(new_weights)
 
@@ -268,14 +293,14 @@ if __name__ == "__main__":
         agent = manager.get_agent()
 
         # test agent, render every 5th episode
-        time_steps, rewards = manager.test(test_steps, test_episodes=10, render=(e % 5 == 0), evaluation_measure="time_and_reward")
-        
+        time_steps, rewards = manager.test(test_steps, test_episodes=10, render=(e % 5 == 0),
+                                           evaluation_measure="time_and_reward")
+
         # update aggregator
         manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
 
         print(f"epoch: {e}    loss: {loss}    reward: {np.mean(rewards)}    avg env steps: {np.mean(time_steps)}")
-       
-       
+
     print("Done.")
     print("Testing optimized agent.")
 
