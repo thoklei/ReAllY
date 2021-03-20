@@ -14,6 +14,8 @@ from really.utils import (
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+tf.random.set_seed(1234)
+
 # Policy Network (Actor)
 class Pi(tf.keras.Sequential):
 
@@ -28,7 +30,7 @@ class Pi(tf.keras.Sequential):
         super(Pi, self).__init__()
         self.state_size = state_size
         self.middle_layer_neurons = 48
-        self.second_layer_neurons = 32
+        self.second_layer_neurons = 12
 
         self.reg = tf.keras.regularizers.L2(l2=0.1)
 
@@ -132,9 +134,10 @@ def train_pi(agent, action, state, value, value_estimate, opt):
         # combine objective with regularizer loss and entropy regularization
         objective = objective + regularizer_loss + tf.transpose(target)
 
-    # calculate and apply gradients
+    # calculate, clip and apply gradients
     gradients = tape.gradient(objective, agent.model.pi_network.trainable_variables)
-    opt.apply_gradients(zip(gradients, agent.model.pi_network.trainable_variables))
+    clipped_gradients = [tf.clip_by_value(grad, tf.constant(-0.9, dtype=tf.float32), tf.constant(0.9, dtype=tf.float32)) for grad in gradients]
+    opt.apply_gradients(zip(clipped_gradients, agent.model.pi_network.trainable_variables))
 
 
 def train_v(agent, state, true_value, opt):
@@ -173,8 +176,8 @@ if __name__ == "__main__":
     model_kwargs = {
         "batch_size": batch_size,
         "state_size": state_size,
-        "sigma1": 0.7,
-        "sigma2": 0.4
+        "sigma1": 0.6,
+        "sigma2": 0.3
     }
 
     kwargs = {
@@ -183,7 +186,7 @@ if __name__ == "__main__":
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 2,
         "total_steps": 1200, # how many total steps to do
-        "num_steps": 320,
+        "num_steps": 200,
         #"num_episodes": 10, # we prefer few full episodes (that get to the reward) over many short ones
         "action_sampling_type": "continuous_normal_diagonal",
     }
@@ -199,13 +202,13 @@ if __name__ == "__main__":
     saving_path = os.getcwd() + "/progress_test"
 
     test_steps = 500
-    epochs = 250
+    epochs = 60
     saving_after = 10
     sample_size = 1000
     gamma = 0.9
 
-    optimizer = tf.keras.optimizers.Adam() 
-
+    actor_optimizer = tf.keras.optimizers.Adam() 
+    critic_optimizer = tf.keras.optimizers.Adam()
     ########################
     ## </Hyperparameters> ##
     ########################
@@ -245,10 +248,10 @@ if __name__ == "__main__":
             value_estimate = agent.model.value_network(s)
 
             # train policy net
-            train_pi(agent, a, s, value, value_estimate, optimizer)
+            train_pi(agent, a, s, value, value_estimate, actor_optimizer)
 
             # train value net
-            loss_v = np.mean(train_v(agent, s, value, optimizer))
+            loss_v = np.mean(train_v(agent, s, value, critic_optimizer))
 
             # averagelosses according to old average * (n-1)/n + new value /n
             loss = loss * (it-1)/it + loss_v / it
