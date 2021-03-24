@@ -14,7 +14,7 @@ from really.utils import (
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-tf.random.set_seed(1234)
+tf.random.set_seed(42)
 
 # Policy Network (Actor)
 class Pi(tf.keras.Sequential):
@@ -29,13 +29,15 @@ class Pi(tf.keras.Sequential):
 
         super(Pi, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 48
-        self.second_layer_neurons = 12
+        self.middle_layer_neurons = 32
+        self.second_layer_neurons = 16
 
         self.reg = tf.keras.regularizers.L2(l2=0.1)
 
-        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activity_regularizer=self.reg, activation=tf.keras.layers.LeakyReLU(alpha=0.05), input_shape=(batch_size, state_size)))
-        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activity_regularizer=self.reg, activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
+        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.LeakyReLU(alpha=0.05, activity_regularizer=self.reg))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons))
+        self.add(tf.keras.layers.LeakyReLU(alpha=0.05, activity_regularizer=self.reg))
         self.add(tf.keras.layers.Dense(2, use_bias=False, activity_regularizer=self.reg, activation='tanh'))
 
 
@@ -52,11 +54,13 @@ class ValueEstimator(tf.keras.Sequential):
 
         super(ValueEstimator, self).__init__()
         self.state_size = state_size
-        self.middle_layer_neurons = 48
-        self.second_layer_neurons = 32
+        self.middle_layer_neurons = 32
+        self.second_layer_neurons = 16
 
-        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05), input_shape=(batch_size, state_size)))
-        self.add(tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.keras.layers.LeakyReLU(alpha=0.05)))
+        self.add(tf.keras.layers.Dense(self.middle_layer_neurons, input_shape=(batch_size, state_size)))
+        self.add(tf.keras.layers.LeakyReLU(alpha=0.05))
+        self.add(tf.keras.layers.Dense(self.second_layer_neurons))
+        self.add(tf.keras.layers.LeakyReLU(alpha=0.05))
         self.add(tf.keras.layers.Dense(1, use_bias=False))
 
 
@@ -129,15 +133,17 @@ def train_pi(agent, action, state, value, value_estimate, opt):
         regularizer_loss = sum(tf.cast(agent.model.pi_network.losses, tf.float64))
 
         # calculate objective as advantage-weighted target
-        objective = tf.math.multiply(tf.transpose(target), advantage) 
+        objective = tf.reduce_mean(tf.math.multiply(tf.transpose(target), advantage))
         
         # combine objective with regularizer loss and entropy regularization
-        objective = objective + regularizer_loss + tf.transpose(target)
+        objective = objective + regularizer_loss #+ tf.transpose(target)
 
     # calculate, clip and apply gradients
     gradients = tape.gradient(objective, agent.model.pi_network.trainable_variables)
-    clipped_gradients = [tf.clip_by_value(grad, tf.constant(-0.9, dtype=tf.float32), tf.constant(0.9, dtype=tf.float32)) for grad in gradients]
-    opt.apply_gradients(zip(clipped_gradients, agent.model.pi_network.trainable_variables))
+    #clipped_gradients = [tf.clip_by_value(grad, tf.constant(-0.9, dtype=tf.float32), tf.constant(0.9, dtype=tf.float32)) for grad in gradients]
+    opt.apply_gradients(zip(gradients, agent.model.pi_network.trainable_variables))
+
+    return objective
 
 
 def train_v(agent, state, true_value, opt):
@@ -186,7 +192,7 @@ if __name__ == "__main__":
         "environment": 'LunarLanderContinuous-v2',
         "num_parallel": 2,
         "total_steps": 1200, # how many total steps to do
-        "num_steps": 200,
+        "num_steps": 350,
         #"num_episodes": 10, # we prefer few full episodes (that get to the reward) over many short ones
         "action_sampling_type": "continuous_normal_diagonal",
     }
@@ -202,10 +208,10 @@ if __name__ == "__main__":
     saving_path = os.getcwd() + "/progress_test"
 
     test_steps = 500
-    epochs = 60
+    epochs = 80
     saving_after = 10
     sample_size = 1000
-    gamma = 0.9
+    gamma = 0.98
 
     actor_optimizer = tf.keras.optimizers.Adam() 
     critic_optimizer = tf.keras.optimizers.Adam()
@@ -238,7 +244,8 @@ if __name__ == "__main__":
         data_dict = dict_to_dict_of_datasets(sample_dict, batch_size=batch_size)
 
         it = 1
-        loss = 0
+        vloss = 0
+        ploss = 0
         for s, a, sn, r, nd in zip(data_dict['state'], data_dict['action'], data_dict['state_new'], data_dict['reward'], data_dict['not_done']): 
 
             # calculate true value
@@ -248,13 +255,14 @@ if __name__ == "__main__":
             value_estimate = agent.model.value_network(s)
 
             # train policy net
-            train_pi(agent, a, s, value, value_estimate, actor_optimizer)
+            loss_p = train_pi(agent, a, s, value, value_estimate, actor_optimizer)
 
             # train value net
             loss_v = np.mean(train_v(agent, s, value, critic_optimizer))
 
-            # averagelosses according to old average * (n-1)/n + new value /n
-            loss = loss * (it-1)/it + loss_v / it
+            # average losses according to old average * (n-1)/n + new value /n
+            vloss = vloss * (it-1)/it + loss_v / it
+            ploss = ploss * (it-1)/it + loss_p / it
             it += 1
 
         # Decaying sigma, but not smaller than 0.05
@@ -274,12 +282,12 @@ if __name__ == "__main__":
         time_steps, rewards = manager.test(test_steps, test_episodes=10, render=(e % 5 == 0), evaluation_measure="time_and_reward")
         
         # update aggregator
-        manager.update_aggregator(loss=loss, time_steps=time_steps, reward=rewards)
+        manager.update_aggregator(loss=vloss+ploss, time_steps=time_steps, reward=rewards)
 
-        print(f"epoch: {e}    loss: {loss}    reward: {np.mean(rewards)}    avg env steps: {np.mean(time_steps)}")
+        print(f"epoch: {e:02}    value_loss: {vloss:.3f}    policy_loss: {ploss:.3f}     reward: {np.mean(rewards):.3f}    avg env steps: {np.mean(time_steps):.2f}")
        
        
     print("Done.")
     print("Testing optimized agent.")
 
-    manager.test(250, test_episodes=10, render=True, do_print=True)
+    manager.test(600, test_episodes=10, render=True, do_print=True)
