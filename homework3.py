@@ -156,7 +156,7 @@ def train_pi(agent, action, state, value, value_estimate, opt):
 
     # calculate, clip and apply gradients
     gradients = tape.gradient(objective, agent.model.pi_network.trainable_variables)
-    #clipped_gradients = [tf.clip_by_value(grad, tf.constant(-1.0, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)) for grad in gradients]
+    clipped_gradients = [tf.clip_by_value(grad, tf.constant(-1.0, dtype=tf.float32), tf.constant(1.0, dtype=tf.float32)) for grad in gradients]
 
     #print("Gradients mean:", np.mean([tf.norm(g) for g in gradients]), "Gradients Max:", max([tf.norm(g) for g in gradients]))
     #print("Clipped Gradients mean:", np.mean([tf.norm(g) for g in clipped_gradients]), "Clipped Gradients Max:", max([tf.norm(g) for g in clipped_gradients]))
