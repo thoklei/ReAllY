@@ -32,6 +32,8 @@ class DQN(tf.keras.Model):
         self.middle_layer_neurons = 32
         self.second_layer_neurons = 16
 
+        #self.reg = tf.keras.regularizers.L2(l2=0.05) # use this if you want to change L2 weight: kernel_regularizer=self.reg
+
         self.layer_list = [
             tf.keras.layers.Dense(self.middle_layer_neurons, activation=tf.nn.leaky_relu, input_shape=(batch_size, state_size), kernel_regularizer='l2'),
             tf.keras.layers.Dense(self.second_layer_neurons, activation=tf.nn.leaky_relu, kernel_regularizer='l2'),
@@ -68,7 +70,7 @@ def train(agent, state, action, target, optim, loss_func):
     with tf.GradientTape() as tape:
 
         out = agent.q_val(state, action)
-        loss = loss_func(target, out)
+        loss = loss_func(target, out) + sum(agent.model.losses) # adding regularizer loss to loss
         gradients = tape.gradient(loss, agent.model.trainable_variables)
         optim.apply_gradients(zip(gradients, agent.model.trainable_variables))
 
