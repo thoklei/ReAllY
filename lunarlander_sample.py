@@ -11,6 +11,8 @@ from really.utils import discount_cumsum
 import tensorflow as tf
 from tensorflow.keras import Model
 
+tf.random.set_seed(42)
+
 class A2C(Model):
     def __init__(self, layers, action_dim):
         super(A2C, self).__init__()
@@ -74,6 +76,7 @@ class A2C(Model):
 if __name__ == "__main__":
     
     env = gym.make("LunarLanderContinuous-v2")
+    env.seed(42)
 
     model_kwargs = {"layers": [32,32,32], "action_dim": env.action_space.shape[0]}
     
@@ -125,17 +128,17 @@ if __name__ == "__main__":
     for e in range(max_episodes):
         
         # Sample data to optimize
-        print('sampling...')
+        #print('sampling...')
         sample_dict = manager.sample(
             sample_size = sampled_batches*optimization_batch_size,
             from_buffer = False
             )
         
         # Compute Advantages
-        print('calculate advantage estimates...')
+        #print('calculate advantage estimates...')
 
         # Add value of last 'new_state'
-        sample_dict['value_estimate'].append(agent.v_estimate(np.expand_dims(sample_dict['state_new'][-1],0)))
+        sample_dict['value_estimate'].append(agent.v(np.expand_dims(sample_dict['state_new'][-1],0)))
 
         sample_dict['advantage'] = []
         gae = 0
@@ -156,7 +159,7 @@ if __name__ == "__main__":
 
         samples = dict_to_dict_of_datasets(sample_dict,batch_size = optimization_batch_size)
 
-        print('optimizing...')
+        #print('optimizing...')
 
         actor_losses = []
         critic_losses = []
@@ -169,9 +172,9 @@ if __name__ == "__main__":
                 old_log_prob = log_prob_batch
                 #print('OLD_LOGPROB:\n',old_log_prob)
                 # New policy
-                new_log_prob, entropy = agent.flowing_log_prob(state_batch,action_batch)
+                new_log_prob, entropy = agent.flowing_log_prob(state_batch,action_batch, return_entropy=True)
                 #print('NEW_LOGPROB:\n',new_log_prob)
-                ratio = tf.exp(new_log_prob - old_log_prob)
+                ratio = tf.exp(new_log_prob - tf.cast(old_log_prob, tf.float32))
                 #print('RATIO:\n',ratio)
                 #print('ADV:\n',advantage_batch)
                 ppo1 = ratio * tf.expand_dims(advantage_batch,1)
@@ -183,7 +186,7 @@ if __name__ == "__main__":
 
                 value_target = returns_batch
                 #print('VALUE_TARGET:\n',value_target)
-                value_pred = agent.v_estimate(state_batch)
+                value_pred = agent.v(state_batch)
                 #print('VALUE_PRED:\n',value_pred)
                 critic_loss = mse_loss(value_target,value_pred)
                 #print('CRITIC_LOSS:\n',critic_loss)
@@ -206,7 +209,7 @@ if __name__ == "__main__":
         # Set new weights
         manager.set_agent(agent.get_weights())
 
-        print('TEST')
+        #print('TEST')
 
         # Update aggregator
         steps, current_rewards = manager.test(
@@ -231,7 +234,7 @@ if __name__ == "__main__":
 
         # Print progress
         print(
-            f"epoch ::: {e}  loss ::: {np.mean(losses)}   avg_current_reward ::: {np.mean(current_rewards)}   avg_reward ::: {avg_reward}   avg_timesteps ::: {np.mean(steps)}"
+            f"epoch ::: {e}  loss ::: {np.mean(losses):.3f}   avg_current_reward ::: {np.mean(current_rewards):.3f}   avg_reward ::: {avg_reward:.3f}   avg_timesteps ::: {np.mean(steps):.2f}"
         )
 
         if avg_reward > env.spec.reward_threshold:
