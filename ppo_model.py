@@ -64,7 +64,7 @@ class A2C(Model):
             value_pred = layer(value_pred)
 
         # Actor
-        output["mu"] = tf.squeeze(self.readout_mu(mu_pred))
+        output["mu"] = self.readout_mu(mu_pred)
         output["sigma"] = tf.squeeze(tf.abs(self.readout_sigma(sigma_pred)))
         # Critic
         output["value_estimate"] = tf.squeeze(self.readout_value(value_pred))

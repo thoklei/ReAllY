@@ -15,8 +15,10 @@ from ppo_model import A2C, TargetNetwork
 tf.random.set_seed(42)
 
 if __name__ == "__main__":
+
+    env_name = "BipedalWalker-v3" #LunarLanderContinuous-v2
     
-    env = gym.make("LunarLanderContinuous-v2")
+    env = gym.make(env_name)
     env.seed(42)
 
     model_kwargs = {"layers": [32,32,32], "action_dim": env.action_space.shape[0]}
@@ -30,11 +32,11 @@ if __name__ == "__main__":
     clipping_value = 0.3   
     critic_discount = 0.5
     entropy_beta = 0.001
-    curiosity_weight = 0.5
+    curiosity_weight = 0.01
 
     kwargs = {
         "model": A2C,
-        "environment": "LunarLanderContinuous-v2",
+        "environment": env_name, 
         "num_parallel": 3,
         "total_steps": 420,
         "returns": ['value_estimate', 'log_prob', 'monte_carlo'],
@@ -72,6 +74,9 @@ if __name__ == "__main__":
 
     agent = manager.get_agent()
 
+    with open('progress_test/results.csv','a') as fd:
+        fd.write('epoch,reward,steps')
+
     print('TRAINING')
     for e in range(max_episodes):
         
@@ -101,7 +106,7 @@ if __name__ == "__main__":
         sample_dict['features'] = []
         for state in sample_dict['state']:
             state = np.array(state)
-            state = np.reshape(state, (1,8))
+            state = np.reshape(state, (1,env.observation_space.shape[0]))
             sample_dict['features'].append(tf.squeeze(target_network(state)))
 
         # Remove keys that are no longer used
@@ -202,6 +207,10 @@ if __name__ == "__main__":
         print(
             f"e: {e} loss: {np.mean(losses):.3f} RND loss: {np.mean(rnd_losses):.6f}  adv: {np.mean(advantages):.6f} avg_curr_rew: {np.mean(current_rewards):.3f}  avg_reward: {avg_reward:.3f}  avg_steps: {np.mean(steps):.2f}"
         )
+
+        # print progress to file
+        with open('progress_test/results.csv','a') as fd:
+            fd.write(','.join([e,np.mean(current_rewards), np.mean(steps)]))
 
         if avg_reward > env.spec.reward_threshold:
             print(f'\n\nEnvironment solved after {e+1} episodes!')
