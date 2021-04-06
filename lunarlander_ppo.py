@@ -10,9 +10,7 @@ from really.utils import (
 from really.utils import discount_cumsum
 from tensorflow.keras import Model
 
-#from ppo_model import ModelWrapper
-from sample_model import A2C
-#from improved_ppo import A2C
+from ppo_model import A2C, TargetNetwork
 
 tf.random.set_seed(42)
 
@@ -22,17 +20,17 @@ if __name__ == "__main__":
     env.seed(42)
 
     model_kwargs = {"layers": [32,32,32], "action_dim": env.action_space.shape[0]}
-    #model_kwargs = {"state_size": 8, "batch_size": 64}
     
     learning_rate = 0.001
     max_episodes = 300
     sampled_batches = 512
-    optimization_batch_size= 64
+    optimization_batch_size = 64
     gamma = 0.99
     my_lambda = 0.95
     clipping_value = 0.3   
     critic_discount = 0.5
     entropy_beta = 0.001
+    curiosity_weight = 0.5
 
     kwargs = {
         "model": A2C,
@@ -45,42 +43,45 @@ if __name__ == "__main__":
         #"gamma": gamma
     }
 
+    ### RND ###
+    layers = [8,8]
+    k = 8
+    target_network = TargetNetwork(layers, k) # fixed random net used to obtain features
+    predictor = TargetNetwork(layers, k) # predictor network we will train to match target network
+
     # Initialize the loss function
     mse_loss = tf.keras.losses.MeanSquaredError()
 
     # Initialize the optimizer
     optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-    # Initilize
+    # RND predictor optimizer
+    pred_optimizer = tf.keras.optimizers.Adam(learning_rate)
+
+    # Initialize
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    # Where to save your results to: create this directory in advance!
     saving_path = os.getcwd() + "/progress_test"#"/progress_LunarLanderContinuous"
 
-    # Initilize progress aggregator
     manager.initialize_aggregator(
         path=saving_path, saving_after=5, aggregator_keys=["loss", 'reward', 'time']
     )
 
     rewards = []
 
-    # Get initial agent
     agent = manager.get_agent()
 
     print('TRAINING')
     for e in range(max_episodes):
         
         # Sample data to optimize
-        #print('sampling...')
         sample_dict = manager.sample(
             sample_size = sampled_batches*optimization_batch_size,
             from_buffer = False
             )
         
         # Compute Advantages
-        #print('calculate advantage estimates...')
-
         # Add value of last 'new_state'
         sample_dict['value_estimate'].append(agent.v(np.expand_dims(sample_dict['state_new'][-1],0)))
 
@@ -95,6 +96,14 @@ if __name__ == "__main__":
         # Center advantage around zero
         sample_dict['advantage'] -= np.mean(sample_dict['advantage'])
 
+        ### RND ###
+        # calculate features from environment observations
+        sample_dict['features'] = []
+        for state in sample_dict['state']:
+            state = np.array(state)
+            state = np.reshape(state, (1,8))
+            sample_dict['features'].append(tf.squeeze(target_network(state)))
+
         # Remove keys that are no longer used
         sample_dict.pop('value_estimate')
         sample_dict.pop('state_new')
@@ -107,10 +116,24 @@ if __name__ == "__main__":
 
         actor_losses = []
         critic_losses = []
+        rnd_losses = []
         losses = []
+        advantages = []
 
-        for state_batch, action_batch, advantage_batch, returns_batch, log_prob_batch in zip(samples['state'], samples['action'], samples['advantage'], samples['monte_carlo'], samples['log_prob']):
-            with tf.GradientTape() as tape:                
+        for state_batch, action_batch, advantage_batch, returns_batch, log_prob_batch, feature_batch in zip(samples['state'], samples['action'], samples['advantage'], samples['monte_carlo'], samples['log_prob'], samples['features']):
+            
+            with tf.GradientTape() as tape:
+                feature_pred = predictor(state_batch)
+                rnd_loss = tf.keras.losses.MSE(feature_batch, feature_pred)
+
+                rnd_gradients = tape.gradient(rnd_loss, predictor.trainable_variables)
+            pred_optimizer.apply_gradients(zip(rnd_gradients, predictor.trainable_variables))
+
+            with tf.GradientTape() as tape:               
+
+                ### RND ### 
+                advantage_batch += curiosity_weight * rnd_loss # incorporate rnd loss into reward signal
+                
                 #print('ACTION:\n',action_batch)
                 # Old policy
                 old_log_prob = log_prob_batch
@@ -139,15 +162,15 @@ if __name__ == "__main__":
                 total_loss = actor_loss + critic_discount * critic_loss - entropy_beta * entropy
                 #print('TOTAL_LOSS:\n',total_loss)
 
-                # policy_weights = [var for var in manager.get_agent().model.trainable_variables if 'Policy' in var.name]
-                # value_weights = [var for var in manager.get_agent().model.trainable_variables if 'Value' in var.name]
                 gradients = tape.gradient(total_loss, agent.model.trainable_variables)
 
             optimizer.apply_gradients(zip(gradients, agent.model.trainable_variables))
-            
+
             actor_losses.append(actor_loss)                
-            critic_losses.append(critic_loss)                
-            losses.append(total_loss)                
+            critic_losses.append(critic_loss)   
+            rnd_losses.append(rnd_loss)             
+            losses.append(total_loss)       
+            advantages.append(tf.reduce_mean(advantage_batch))         
 
         # Set new weights
         manager.set_agent(agent.get_weights())
@@ -177,7 +200,7 @@ if __name__ == "__main__":
 
         # Print progress
         print(
-            f"epoch ::: {e}  loss ::: {np.mean(losses):.3f}   avg_current_reward ::: {np.mean(current_rewards):.3f}   avg_reward ::: {avg_reward:.3f}   avg_timesteps ::: {np.mean(steps):.2f}"
+            f"e: {e} loss: {np.mean(losses):.3f} RND loss: {np.mean(rnd_losses):.6f}  adv: {np.mean(advantages):.6f} avg_curr_rew: {np.mean(current_rewards):.3f}  avg_reward: {avg_reward:.3f}  avg_steps: {np.mean(steps):.2f}"
         )
 
         if avg_reward > env.spec.reward_threshold:
