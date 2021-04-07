@@ -3,6 +3,7 @@ import os, logging
 # only print error messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import tensorflow as tf
+import tensorflow_probability as tfp
 import numpy as np
 import random
 from scipy.stats import norm, lognorm
@@ -34,7 +35,6 @@ class Agent:
         model_kwargs={},
         test=False,
     ):
-        super(Agent, self).__init__
         #logging.basicConfig(
         #    filename=f"logging/agent.log", level=logging.DEBUG
         #)
@@ -190,7 +190,7 @@ class Agent:
         network_out = self.model(state)
         if self.action_sampling_type == 'continuous_normal_diagonal':
             mus, sigmas = network_out["mu"], network_out["sigma"]
-            dist = tf.compat.v1.distributions.Normal(mus, sigmas)
+            dist = tfp.distributions.Normal(mus, sigmas)
             log_prob = dist.log_prob(action)
             if return_entropy:
                 first_step = tf.math.log(tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas)))
