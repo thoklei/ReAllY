@@ -30,8 +30,13 @@ if __name__ == "__main__":
             os.makedirs(e_name)
 
     ### this is the main setting we change between experiments ###
-    env_name = lunar  # choose env name, either bipedal or lunar
-    use_rnd = True  # whether to use vanilla PPO or RND
+    env_name = bipedal  # choose env name, either bipedal or lunar
+    use_rnd = False  # whether to use vanilla PPO or RND
+
+    if use_rnd:
+        results_file_name = env_name + '/results_rnd.csv'
+    else:
+        results_file_name = env_name + '/results_base.csv'
 
     env = gym.make(env_name)
     env.seed(42)
@@ -101,7 +106,7 @@ if __name__ == "__main__":
         agent = manager.get_agent()
         epoch_offset = 0
 
-    with open(env_name + '/results.csv', 'a') as fd:
+    with open(results_file_name, 'a') as fd:
         fd.write('epoch,loss,reward,steps\n')
 
     print('TRAINING')
@@ -250,7 +255,7 @@ if __name__ == "__main__":
         )
 
         # print progress to file
-        with open(env_name + '/results.csv', 'a') as fd:
+        with open(results_file_name, 'a') as fd:
             fd.write(','.join([str(np.mean(x)) for x in [e, losses, current_rewards, steps]]) + '\n')
 
         if (e % 25) == 0:  # avg_reward > env.spec.reward_threshold:
