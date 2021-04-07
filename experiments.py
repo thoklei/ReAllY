@@ -138,6 +138,8 @@ if __name__ == "__main__":
                 state = np.array(state)
                 state = np.reshape(state, (1, env.observation_space.shape[0]))
                 sample_dict['features'].append(tf.squeeze(target_network(state)))
+        else:
+            sample_dict['features'] = sample_dict['state']
 
         # Remove keys that are no longer used
         sample_dict.pop('value_estimate')
