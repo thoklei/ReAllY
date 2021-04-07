@@ -16,12 +16,24 @@ tf.random.set_seed(42)
 
 if __name__ == "__main__":
 
-    env_name = "BipedalWalker-v3" #LunarLanderContinuous-v2
+    bipedal = "BipedalWalker-v3"
+    lunar = "LunarLanderContinuous-v2"
+
+    for e_name in [bipedal, lunar]:
+        if not os.path.exists("./"+e_name):
+            os.makedirs(e_name)
+
+    ### this is the main setting we change between experiments ###
+    env_name = bipedal  # choose env name, either bipedal or lunar
+    use_rnd = False     # whether to use vanilla PPO or RND
     
     env = gym.make(env_name)
     env.seed(42)
 
-    model_kwargs = {"layers": [32,32,32], "action_dim": env.action_space.shape[0]}
+    if env_name == bipedal:
+        model_kwargs = {"layers": [48,48,48], "action_dim": env.action_space.shape[0]}
+    else:
+        model_kwargs = {"layers": [32,32,32], "action_dim": env.action_space.shape[0]}
     
     learning_rate = 0.001
     max_episodes = 300
@@ -32,7 +44,8 @@ if __name__ == "__main__":
     clipping_value = 0.3   
     critic_discount = 0.5
     entropy_beta = 0.001
-    curiosity_weight = 0.01
+    if use_rnd:
+        curiosity_weight = 0.1
 
     kwargs = {
         "model": A2C,
@@ -46,10 +59,14 @@ if __name__ == "__main__":
     }
 
     ### RND ###
-    layers = [8,8]
-    k = 8
-    target_network = TargetNetwork(layers, k) # fixed random net used to obtain features
-    predictor = TargetNetwork(layers, k) # predictor network we will train to match target network
+    if use_rnd:
+        layers = [8,8]
+        k = 8
+        target_network = TargetNetwork(layers, k) # fixed random net used to obtain features
+        predictor = TargetNetwork(layers, k) # predictor network we will train to match target network
+
+        pred_optimizer = tf.keras.optimizers.Adam(learning_rate)
+
 
     # Initialize the loss function
     mse_loss = tf.keras.losses.MeanSquaredError()
@@ -57,14 +74,12 @@ if __name__ == "__main__":
     # Initialize the optimizer
     optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-    # RND predictor optimizer
-    pred_optimizer = tf.keras.optimizers.Adam(learning_rate)
 
     # Initialize
     ray.init(log_to_driver=False)
     manager = SampleManager(**kwargs)
 
-    saving_path = os.getcwd() + "/progress_test"#"/progress_LunarLanderContinuous"
+    saving_path = os.getcwd() + "/" + env_name
 
     manager.initialize_aggregator(
         path=saving_path, saving_after=5, aggregator_keys=["loss", 'reward', 'time']
@@ -74,8 +89,8 @@ if __name__ == "__main__":
 
     agent = manager.get_agent()
 
-    with open('progress_test/results.csv','a') as fd:
-        fd.write('epoch,reward,steps')
+    with open(env_name+'/results.csv','a') as fd:
+        fd.write('epoch,loss,reward,steps\n')
 
     print('TRAINING')
     for e in range(max_episodes):
@@ -102,12 +117,13 @@ if __name__ == "__main__":
         sample_dict['advantage'] -= np.mean(sample_dict['advantage'])
 
         ### RND ###
-        # calculate features from environment observations
-        sample_dict['features'] = []
-        for state in sample_dict['state']:
-            state = np.array(state)
-            state = np.reshape(state, (1,env.observation_space.shape[0]))
-            sample_dict['features'].append(tf.squeeze(target_network(state)))
+        if use_rnd:
+            # calculate features from environment observations
+            sample_dict['features'] = []
+            for state in sample_dict['state']:
+                state = np.array(state)
+                state = np.reshape(state, (1,env.observation_space.shape[0]))
+                sample_dict['features'].append(tf.squeeze(target_network(state)))
 
         # Remove keys that are no longer used
         sample_dict.pop('value_estimate')
@@ -127,17 +143,19 @@ if __name__ == "__main__":
 
         for state_batch, action_batch, advantage_batch, returns_batch, log_prob_batch, feature_batch in zip(samples['state'], samples['action'], samples['advantage'], samples['monte_carlo'], samples['log_prob'], samples['features']):
             
-            with tf.GradientTape() as tape:
-                feature_pred = predictor(state_batch)
-                rnd_loss = tf.keras.losses.MSE(feature_batch, feature_pred)
+            if use_rnd:
+                with tf.GradientTape() as tape:
+                    feature_pred = predictor(state_batch)
+                    rnd_loss = tf.keras.losses.MSE(feature_batch, feature_pred)
 
-                rnd_gradients = tape.gradient(rnd_loss, predictor.trainable_variables)
-            pred_optimizer.apply_gradients(zip(rnd_gradients, predictor.trainable_variables))
+                    rnd_gradients = tape.gradient(rnd_loss, predictor.trainable_variables)
+                pred_optimizer.apply_gradients(zip(rnd_gradients, predictor.trainable_variables))
 
             with tf.GradientTape() as tape:               
 
                 ### RND ### 
-                advantage_batch += curiosity_weight * rnd_loss # incorporate rnd loss into reward signal
+                if use_rnd:
+                    advantage_batch += curiosity_weight * rnd_loss # incorporate rnd loss into reward signal
                 
                 #print('ACTION:\n',action_batch)
                 # Old policy
@@ -173,7 +191,9 @@ if __name__ == "__main__":
 
             actor_losses.append(actor_loss)                
             critic_losses.append(critic_loss)   
-            rnd_losses.append(rnd_loss)             
+            ### RND ###
+            if use_rnd:
+                rnd_losses.append(rnd_loss)             
             losses.append(total_loss)       
             advantages.append(tf.reduce_mean(advantage_batch))         
 
@@ -209,13 +229,14 @@ if __name__ == "__main__":
         )
 
         # print progress to file
-        with open('progress_test/results.csv','a') as fd:
-            fd.write(','.join([e,np.mean(current_rewards), np.mean(steps)]))
+        with open(env_name+'/results.csv','a') as fd:
+            fd.write(','.join([str(np.mean(x)) for x in [e, losses, current_rewards, steps]])+'\n')
 
-        if avg_reward > env.spec.reward_threshold:
-            print(f'\n\nEnvironment solved after {e+1} episodes!')
+        if (e % 25) == 0:#avg_reward > env.spec.reward_threshold:
+            #print(f'\n\nEnvironment solved after {e+1} episodes!')
+            print("Saving Model")
             # Save model
-            manager.save_model(saving_path, e, model_name='LunarLanderContinuous')
+            manager.save_model(saving_path, e, model_name='model')
             break
 
     print("testing optimized agent")
