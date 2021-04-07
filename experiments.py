@@ -57,7 +57,7 @@ if __name__ == "__main__":
     kwargs = {
         "model": A2C,
         "environment": env_name,
-        "num_parallel": 3,
+        "num_parallel": 4,
         "total_steps": 420,
         "returns": ['value_estimate', 'log_prob', 'monte_carlo'],
         "model_kwargs": model_kwargs,
@@ -94,13 +94,19 @@ if __name__ == "__main__":
 
     rewards = []
 
-    agent = manager.get_agent()
+    start_from_saved_model = True
+    if start_from_saved_model:
+        agent, epoch_offset = manager.load_model(saving_path)
+    else:
+        agent = manager.get_agent()
+        epoch_offset = 0
 
     with open(env_name + '/results.csv', 'a') as fd:
         fd.write('epoch,loss,reward,steps\n')
 
     print('TRAINING')
-    for e in range(max_episodes):
+    for e in range(epoch_offset, max_episodes + epoch_offset):
+        e += 1
         t = time.time()
         # Sample data to optimize
         sample_dict = manager.sample(
@@ -236,9 +242,9 @@ if __name__ == "__main__":
 
         # Print progress
         print(
-            f"e: {e} loss: {np.mean(losses):.3f} RND loss: {np.mean(rnd_losses):.6f}  adv: {np.mean(advantages):.6f}  "
-            f"avg_curr_rew: {np.mean(current_rewards):.3f}  avg_reward: {avg_reward:.3f}  "
-            f"avg_steps: {np.mean(steps):.2f}  time_per_step {(time.time()-t)/np.mean(steps):.2f}"
+            f"e: {e}   loss: {np.mean(losses):.3f}   RND loss: {np.mean(rnd_losses):.6f}   adv: {np.mean(advantages):.6f}   "
+            f"avg_curr_rew: {np.mean(current_rewards):.3f}   avg_reward: {avg_reward:.3f}   "
+            f"avg_steps: {np.mean(steps):.2f}   time {(time.time()-t):.2f}"
         )
 
         # print progress to file

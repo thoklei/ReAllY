@@ -14,7 +14,7 @@ from really.runner_box import RunnerBox
 from really.buffer import Replay_buffer
 from really.agg import Smoothing_aggregator
 from really.utils import all_subdirs_of
-
+import re
 
 class SampleManager:
 
@@ -465,7 +465,7 @@ class SampleManager:
         print("saving model...")
         agent.model.save(full_path)
 
-    def load_model(self, path, model_name=None):
+    def load_model(self, path, model_name=None, compile=False):
         if model_name is not None:
             # # TODO:
             print("specific model loading not yet implemented")
@@ -474,9 +474,10 @@ class SampleManager:
         # alweys leads the latest model
         subdirs = all_subdirs_of(path)
         latest_subdir = max(subdirs, key=os.path.getmtime)
+        epoch_offset = int(re.findall(r"_\d+_", latest_subdir)[0][1:-1])  # regex return e.g. ['_25_', '_2021_']
         print("loading model...")
-        model = tf.keras.models.load_model(latest_subdir)
+        model = tf.keras.models.load_model(latest_subdir, compile=compile)
         weights = model.get_weights()
         self.set_agent(weights)
         agent = self.get_agent()
-        return agent
+        return agent, epoch_offset
