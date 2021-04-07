@@ -148,7 +148,7 @@ if __name__ == "__main__":
         sample_dict.pop('not_done')
 
         samples = dict_to_dict_of_datasets(sample_dict, batch_size=optimization_batch_size)
-
+        del sample_dict  # free up memory
         # print('optimizing...')
 
         actor_losses = []
@@ -259,7 +259,7 @@ if __name__ == "__main__":
             # Save model
             manager.save_model(saving_path, e, model_name='model')
 
-        if avg_reward > env.spec.reward_threshold:
+        if avg_reward >= env.spec.reward_threshold:
             manager.save_model(saving_path, e, model_name='solved')
             break
 
