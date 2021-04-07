@@ -259,6 +259,10 @@ if __name__ == "__main__":
             # Save model
             manager.save_model(saving_path, e, model_name='model')
 
+        if avg_reward > env.spec.reward_threshold:
+            manager.save_model(saving_path, e, model_name='solved')
+            break
+
     print("testing optimized agent")
     manager.test(
         max_steps=1000,
