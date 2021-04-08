@@ -27,7 +27,7 @@ for env_name in envs:
             ax = df1.plot(subplots=True)
             # add more dataframes to figure
             for j in range(len(file_names)-1):
-                pd.read_csv(file_names[j+1], index_col=0).plot(ax=ax, subplots=True)
+                pd.read_csv(file_names[j+1], index_col=0).plot(ax=ax, subplots=True, legend=False)
             plt.show()
 
                 
