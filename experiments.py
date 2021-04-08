@@ -31,7 +31,9 @@ if __name__ == "__main__":
 
     ### this is the main setting we change between experiments ###
     env_name = bipedal  # choose env name, either bipedal or lunar
-    use_rnd = False  # whether to use vanilla PPO or RND
+    use_rnd = True  # whether to use vanilla PPO or RND
+    start_from_saved_model = False
+    use_ray = True
 
     if use_rnd:
         results_file_name = env_name + '/results_rnd.csv'
@@ -41,14 +43,18 @@ if __name__ == "__main__":
     env = gym.make(env_name)
     env.seed(42)
 
-    if env_name == bipedal:
-        model_kwargs = {"layers": [48, 48, 48], "action_dim": env.action_space.shape[0]}
-    else:
-        model_kwargs = {"layers": [32, 32, 32], "action_dim": env.action_space.shape[0]}
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
 
-    use_ray = True
+
+    if env_name == bipedal:
+        model_kwargs = {"layers": [48, 48, 48], "action_dim": action_dim}
+    else:
+        model_kwargs = {"layers": [32, 32, 32], "action_dim": action_dim}
+
     learning_rate = 0.001
-    max_episodes = 300
+    max_episodes = 1000
+    test_steps = 1600
     sampled_batches = 512
     optimization_batch_size = 64
     gamma = 0.99
@@ -57,7 +63,8 @@ if __name__ == "__main__":
     critic_discount = 0.5
     entropy_beta = 0.001
     if use_rnd:
-        curiosity_weight = 0.1
+        curiosity_weight = 0.5
+        curiosity_gamma = 0.98
 
     kwargs = {
         "model": A2C,
@@ -99,7 +106,6 @@ if __name__ == "__main__":
 
     rewards = []
 
-    start_from_saved_model = True
     if start_from_saved_model:
         agent, epoch_offset = manager.load_model(saving_path)
     else:
@@ -107,7 +113,7 @@ if __name__ == "__main__":
         epoch_offset = 0
 
     with open(results_file_name, 'a') as fd:
-        fd.write('epoch,loss,reward,steps\n')
+        fd.write('epoch,loss,reward,rnd_loss,steps\n')
 
     print('TRAINING')
     for e in range(epoch_offset, max_episodes + epoch_offset):
@@ -125,13 +131,24 @@ if __name__ == "__main__":
 
         sample_dict['advantage'] = []
         gae = 0
+        intrinsic = 0
         # Loop backwards through rewards
         for i in reversed(range(len(sample_dict['reward']))):
+
             delta = sample_dict['reward'][i] + gamma * sample_dict['value_estimate'][i + 1].numpy() * \
                     sample_dict['not_done'][i] - sample_dict['value_estimate'][i].numpy()
+
+            if use_rnd:
+                intrinsic = tf.squeeze(tf.keras.losses.MSE(target_network(sample_dict['state'][i].reshape(1,state_dim)), predictor(sample_dict['state'][i].reshape(1,state_dim)))).numpy() \
+                        + sample_dict['not_done'][i] * curiosity_gamma * intrinsic
+
             gae = delta + gamma * my_lambda * sample_dict['not_done'][i] * gae
+
+            # print("GAE: ", gae, " intrinsic: ", curiosity_weight * intrinsic)
+            
             # Insert advantage in front to get correct order
-            sample_dict['advantage'].insert(0, gae)
+            sample_dict['advantage'].insert(0, gae + curiosity_weight * intrinsic)
+
         # Center advantage around zero
         sample_dict['advantage'] -= np.mean(sample_dict['advantage'])
 
@@ -141,7 +158,7 @@ if __name__ == "__main__":
             sample_dict['features'] = []
             for state in sample_dict['state']:
                 state = np.array(state)
-                state = np.reshape(state, (1, env.observation_space.shape[0]))
+                state = np.reshape(state, (1, state_dim))
                 sample_dict['features'].append(tf.squeeze(target_network(state)))
         else:
             sample_dict['features'] = sample_dict['state']
@@ -175,10 +192,6 @@ if __name__ == "__main__":
                 pred_optimizer.apply_gradients(zip(rnd_gradients, predictor.trainable_variables))
 
             with tf.GradientTape() as tape:
-
-                ### RND ### 
-                if use_rnd:
-                    advantage_batch += curiosity_weight * rnd_loss  # incorporate rnd loss into reward signal
 
                 # print('ACTION:\n',action_batch)
                 # Old policy
@@ -228,18 +241,17 @@ if __name__ == "__main__":
 
         # Update aggregator
         steps, current_rewards = manager.test(
-            max_steps=1000,
-            test_episodes=10,
+            max_steps=test_steps,
+            test_episodes=5,
             render=False,
             evaluation_measure="time_and_reward",
         )
 
-        # if (e+1) % 5 == 0:
-        manager.test(
-            max_steps=1000,
-            test_episodes=1,
-            render=True
-        )
+        if (e+1) % 5 == 0:
+            manager.test(
+                max_steps=test_steps,
+                test_episodes=1,
+                render=True)
         manager.update_aggregator(loss=losses, reward=current_rewards, time=steps)
 
         # Collect all rewards
@@ -249,14 +261,14 @@ if __name__ == "__main__":
 
         # Print progress
         print(
-            f"e: {e}   loss: {np.mean(losses):.3f}   RND loss: {np.mean(rnd_losses):.6f}   adv: {np.mean(advantages):.6f}   "
+            f"e: {e}   loss: {np.mean(losses):.3f}   RND loss: {curiosity_weight * np.mean(rnd_losses):.6f}   adv: {np.mean(advantages):.6f}   "
             f"avg_curr_rew: {np.mean(current_rewards):.3f}   avg_reward: {avg_reward:.3f}   "
             f"avg_steps: {np.mean(steps):.2f}   time {(time.time()-t):.2f}"
         )
 
         # print progress to file
         with open(results_file_name, 'a') as fd:
-            fd.write(','.join([str(np.mean(x)) for x in [e, losses, current_rewards, steps]]) + '\n')
+            fd.write(','.join([str(np.mean(x)) for x in [e, losses, current_rewards, curiosity_weight * np.mean(rnd_losses), steps]]) + '\n')
 
         if (e % 25) == 0:  # avg_reward > env.spec.reward_threshold:
             # print(f'\n\nEnvironment solved after {e+1} episodes!')
