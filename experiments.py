@@ -250,11 +250,11 @@ if __name__ == "__main__":
             evaluation_measure="time_and_reward",
         )
 
-        if (e+1) % 5 == 0:
-            manager.test(
-                max_steps=test_steps,
-                test_episodes=1,
-                render=True)
+        # if (e+1) % 5 == 0:
+        #     manager.test(
+        #         max_steps=test_steps,
+        #         test_episodes=1,
+        #         render=True)
         manager.update_aggregator(loss=losses, reward=current_rewards, time=steps)
 
         # Collect all rewards
