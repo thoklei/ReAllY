@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     ### this is the main setting we change between experiments ###
     env_name = bipedal  # choose env name, either bipedal or lunar
-    use_rnd = True  # whether to use vanilla PPO or RND
+    use_rnd = False  # whether to use vanilla PPO or RND
     start_from_saved_model = False
     use_ray = True
 
@@ -65,6 +65,8 @@ if __name__ == "__main__":
     if use_rnd:
         curiosity_weight = 0.5
         curiosity_gamma = 0.98
+    else:
+        curiosity_weight = 0
 
     kwargs = {
         "model": A2C,
@@ -147,6 +149,7 @@ if __name__ == "__main__":
             # print("GAE: ", gae, " intrinsic: ", curiosity_weight * intrinsic)
             
             # Insert advantage in front to get correct order
+
             sample_dict['advantage'].insert(0, gae + curiosity_weight * intrinsic)
 
         # Center advantage around zero
