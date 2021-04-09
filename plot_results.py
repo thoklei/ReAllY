@@ -22,12 +22,17 @@ for env_name in envs:
 
         if file_names:
             # Read first CSV file
-            df1 = pd.read_csv(file_names[0], index_col=0)
+            df1 = pd.read_csv(file_names[0], index_col='epoch')
+            if 'rnd_loss' in df1.columns:
+                df = df1.drop(columns=['rnd_loss'])
             # plot dataframe and create figure
             ax = df1.plot(subplots=True)
             # add more dataframes to figure
             for j in range(len(file_names)-1):
-                pd.read_csv(file_names[j+1], index_col=0).plot(ax=ax, subplots=True, legend=False)
+                df = pd.read_csv(file_names[j+1], index_col='epoch')
+                if 'rnd_loss' in df.columns:
+                    df = df.drop(columns=['rnd_loss'])
+                df.plot(ax=ax, subplots=True, legend=False)
             plt.show()
 
                 
