@@ -1,5 +1,4 @@
 epoch,loss,reward,rnd_loss,steps
-epoch,loss,reward,rnd_loss,steps
 1.0,2490.9375,-162.63952815524735,nan,69.6
 2.0,1015.02576,-197.3428310813662,nan,81.8
 3.0,1120.3049,-145.87898639997726,nan,70.4
