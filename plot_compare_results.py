@@ -24,24 +24,24 @@ for env_name in envs:
     fig, ax = plt.subplots()
     window_size = 25
 
-    colors_red = ['#FF0000', '#EE0000', '#CD0000']
-    # 8B0000
-    colors_green = ['#00FF00', '#00EE00', '#00CD00']
-    # 008B00
+    # colors_red = ['r', 'r', 'r']
+    colors_red = ['#CD0000', '#CD0000', '#CD0000']
+    # colors_green = ['#00CD00', '#008B45', '#006400']
+    colors_green = ['g', 'g', 'g']
 
     put_label = True
     for i, df in enumerate(dfs_env["PPO"]):
-        df = df.truncate(after=400) # truncate df
+        df = df.truncate(after=400) # truncate df after 400
         df['avg_reward'] = df['reward'].rolling(window=window_size).mean() # calc running average
         max_index = int(df[['avg_reward']].idxmax())
         max_value = df[['avg_reward']].max()
         df1 = df['avg_reward'].iloc[:max_index]
         df2 = df['avg_reward'].iloc[max_index:]
         if put_label:
-            ax.plot(df1, label="PPO", alpha=0.6, linestyle='-', color=colors_green[i])
+            ax.plot(df1, label="PPO", alpha=0.7, linestyle='-', color=colors_green[i])
             put_label = False
         else:
-            ax.plot(df1, alpha=0.6, linestyle='-', color=colors_green[i])
+            ax.plot(df1, alpha=0.7, linestyle='-', color=colors_green[i])
         ax.plot(df2, alpha=0.4, linestyle='--', color=colors_green[i])
         ax.plot(max_index, max_value, alpha=0.8, marker='o', color=colors_green[i])
     put_label = True
@@ -53,16 +53,20 @@ for env_name in envs:
         df1 = df['avg_reward'].iloc[:max_index]
         df2 = df['avg_reward'].iloc[max_index:]
         if put_label:
-            ax.plot(df1, label="RND", alpha=0.6, linestyle='-', color=colors_red[i])
+            ax.plot(df1, label="RND", alpha=0.7, linestyle='-', color=colors_red[i])
             put_label = False
         else:
-            ax.plot(df1, alpha=0.6, linestyle='-', color=colors_red[i])
+            ax.plot(df1, alpha=0.7, linestyle='-', color=colors_red[i])
         ax.plot(df2, alpha=0.4, linestyle='--', color=colors_red[i])
         ax.plot(max_index, max_value, alpha=0.8, marker='o', color=colors_red[i])
-    ax.set_title(env_name)
+
+    if env_name == "Lunar":
+        ax.set_title("Performance: LunarLander")
+    if env_name == "Bipedal_easy":
+        ax.set_title("Performance: Bipedal Walker")
     ax.legend()
     ax.set_xlabel("epoch")
-    ax.set_ylabel(f"reward\n(rolling average with a window of {window_size})")
+    ax.set_ylabel(f"reward\n(rolling average with a window of {window_size} epochs)")
     plt.tight_layout()
     plt.savefig(f'results/{env_name}.png')
     plt.show()
