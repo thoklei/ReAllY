@@ -1,13 +1,3 @@
-import gym
-import numpy as np
-import ray
-import os
-from really import SampleManager
-from really.utils import (
-    dict_to_dict_of_datasets,
-)
-from really.utils import discount_cumsum
-
 import tensorflow as tf
 from tensorflow.keras import Model
 
@@ -88,8 +78,7 @@ class TargetNetwork(Model):
                 units=num_units,
                 activation='relu') for i, num_units in enumerate(layers)]
 
-        self.readout = tf.keras.layers.Dense(units=k,
-                                                activation=None)
+        self.readout = tf.keras.layers.Dense(units=k, activation=None)
 
 
     @tf.function
@@ -103,3 +92,53 @@ class TargetNetwork(Model):
         readout = self.readout(embedding)
 
         return readout
+
+
+@tf.function
+def train_on_batch_ppo(
+        agent, state_batch, action_batch, advantage_batch, log_prob_batch, returns_batch,
+        ppo_clipping_value: float, critic_discount: float, entropy_beta: float,
+        critic_loss_fn, ppo_optimizer
+):
+    """ This function performs a single training step on one batch of data for a ppo agent. """
+    with tf.GradientTape() as tape:
+        # Old policy
+        old_log_prob = log_prob_batch
+        # New policy
+        new_log_prob, entropy = agent.flowing_log_prob(state_batch, action_batch, return_entropy=True)
+        # using log rules to compute the ratio: A/B = exp(ln(A) - ln(B))
+        ratio = tf.exp(new_log_prob - tf.cast(old_log_prob, tf.float32))
+
+        ppo1 = ratio * tf.expand_dims(advantage_batch, 1)
+        ppo2 = tf.clip_by_value(ratio, 1 - ppo_clipping_value, 1 + ppo_clipping_value) * tf.expand_dims(advantage_batch, 1)
+
+        actor_loss = -tf.reduce_mean(tf.minimum(ppo1, ppo2), 0)
+
+        value_target = returns_batch
+        value_pred = agent.v(state_batch)
+        critic_loss = critic_loss_fn(value_target, value_pred)
+
+        total_loss = actor_loss + critic_discount * critic_loss - entropy_beta * entropy
+
+    gradients = tape.gradient(total_loss, agent.model.trainable_variables)
+
+    ppo_optimizer.apply_gradients(zip(gradients, agent.model.trainable_variables))
+
+    return actor_loss, critic_loss, total_loss
+
+
+@tf.function
+def train_on_batch_rnd(
+    state_batch, target_network, predictor_network, pred_optimizer
+):
+    """ This function performs a single training step on one batch of data for RND. """
+    # Obtain so called features from the target network which the predictor needs to imitate.
+    target_pred = target_network(state_batch)
+
+    with tf.GradientTape() as tape:
+        feature_pred = predictor_network(state_batch)
+        rnd_loss = tf.keras.losses.MSE(target_pred, feature_pred)
+
+    rnd_gradients = tape.gradient(rnd_loss, predictor_network.trainable_variables)
+    pred_optimizer.apply_gradients(zip(rnd_gradients, predictor_network.trainable_variables))
+    return rnd_loss
