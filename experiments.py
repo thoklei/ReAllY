@@ -18,7 +18,7 @@ import ppo_model
 #####    SUMMARY     #####
 
 ----- Initialization -----
-    Setup - some constants are set.py
+    Setup - some constants are set.
     Experiment settings - the settings we tweaked during our experiments.
     Hyperparameter - here are all parameters for training and all models set.
     IO - here are common parameters initialized for IO transactions throughout the training phase.
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     # ---------------------- Experiment settings ----------------------
     """ For our experiments we only changed those parameters. """
     env_name = lunar  # choose env name, either bipedal or lunar
-    use_rnd = False  # whether to use vanilla PPO or PPO + RND
+    use_rnd = True  # whether to use vanilla PPO or PPO + RND
     continue_from_saved_model = False
     use_ray = True
 
@@ -72,9 +72,10 @@ if __name__ == "__main__":
     # Model kwargs
     with gym.make(env_name) as env:
         action_dim = env.action_space.shape[0]
+        state_dim = env.observation_space.shape[0]
         solving_threshold = env.spec.reward_threshold
     middle_layers = [48, 48, 48] if env_name == bipedal else [32, 32, 32]
-    model_kwargs = {"layers": middle_layers, "action_dim": action_dim}
+    model_kwargs = {"layers": middle_layers, "action_dim": action_dim, "state_dim": state_dim}
 
     ppo_loss = tf.keras.losses.MeanSquaredError()
     ppo_optimizer = tf.keras.optimizers.Adam(learning_rate)
@@ -86,10 +87,10 @@ if __name__ == "__main__":
         layers = [8, 8]
         k = 8
         # fixed random net used to obtain features
-        target_network = ppo_model.TargetNetwork(layers, k)
+        target_network = ppo_model.TargetNetwork(layers, k, state_dim)
         target_network.trainable = False
         # predictor network we will train to match target network
-        predictor = ppo_model.TargetNetwork(layers, k)
+        predictor = ppo_model.TargetNetwork(layers, k, state_dim)
 
         pred_optimizer = tf.keras.optimizers.Adam(learning_rate)
 
