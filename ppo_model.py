@@ -1,8 +1,10 @@
 import tensorflow as tf
 from tensorflow.keras import Model
+from tensorflow.keras.layers import (Dense, Input, Lambda)
+
 
 class A2C(Model):
-    def __init__(self, layers, action_dim):
+    def __init__(self, layers, action_dim, state_dim):
         super(A2C, self).__init__()
         self.mu_layer = [
             tf.keras.layers.Dense(
@@ -22,7 +24,7 @@ class A2C(Model):
                 activation='relu',
                 name=f'Policy_sigma_{i}'
                 ) for i, num_units in enumerate(layers)]
-                
+
         self.readout_sigma = tf.keras.layers.Dense(units=action_dim,
                                                    activation=None,
                                                    name='Policy_sigma_readout'
@@ -34,7 +36,7 @@ class A2C(Model):
                 activation='relu',
                 name=f'Value_layer_{i}'
                 ) for i, num_units in enumerate(layers)]
-                
+
         self.readout_value = tf.keras.layers.Dense(units=1,
                                                    activation=None,
                                                    name='Value_readout'
@@ -63,7 +65,7 @@ class A2C(Model):
 
 class TargetNetwork(Model):
 
-    def __init__(self, layers, k):
+    def __init__(self, layers, k, state_dim):
         """
         Constructor for the RND-target network.
 
@@ -93,6 +95,52 @@ class TargetNetwork(Model):
 
         return readout
 
+# def dense_block(X, units_list, activation, name=None):
+#     for i, units in enumerate(units_list):
+#         if name is None:
+#             X = Dense(units, activation=activation)(X)
+#         else:
+#             X = Dense(units, activation=activation, name=name.format(i))(X)
+#     return X
+#
+#
+# class A2C(Model):
+#     def __init__(self, layers, action_dim, state_dim):
+#         inp = Input((state_dim,))
+#         mu = dense_block(inp, layers, 'relu', "Policy_mu_{}")
+#         mu_out = Dense(action_dim, activation=None, name="Policy_mu_readout")(mu)
+#
+#         sigma = dense_block(inp, layers, 'relu', "Policy_sigma_{}")
+#         sigma_out = Dense(units=action_dim, activation=None, name='Policy_sigma_readout')(sigma)
+#
+#         value = dense_block(inp, layers, 'relu', "Value_layer_{}")
+#         value_out = Dense(units=1, activation=None, name='Value_readout')(value)
+#
+#         out = Lambda(
+#             lambda outputs: {
+#                 "mu": tf.squeeze(outputs[0]),
+#                 "sigma": tf.squeeze(tf.abs(outputs[1])),
+#                 "value_estimate": tf.squeeze(outputs[2])
+#             }
+#         )([mu_out, sigma_out, value_out])
+#
+#         super(A2C, self).__init__(inp, out)
+#
+#
+# class TargetNetwork(Model):
+#
+#     def __init__(self, layers, k, state_dim):
+#         """
+#         Constructor for the RND-target network.
+#
+#         layers = list of layer sizes
+#         k = dimensionality of the embedding space
+#         """
+#         inp = Input((state_dim,))
+#         X = dense_block(inp, layers, "relu", "")
+#         out = Dense(units=k, activation=None, name="output")(X)
+#
+#         super(TargetNetwork, self).__init__(inp, out)
 
 @tf.function
 def train_on_batch_ppo(
