@@ -14,7 +14,7 @@ from really.runner_box import RunnerBox
 from really.buffer import Replay_buffer
 from really.agg import Smoothing_aggregator
 from really.utils import all_subdirs_of
-
+import re
 
 class SampleManager:
 
@@ -47,7 +47,7 @@ class SampleManager:
     """
 
     def __init__(
-        self, model, environment, num_parallel, total_steps, returns=[], **kwargs
+        self, model, environment, num_parallel, total_steps, returns=[], use_ray=True, **kwargs
     ):
 
         self.model = model
@@ -55,6 +55,7 @@ class SampleManager:
         self.num_parallel = num_parallel
         self.total_steps = total_steps
         self.buffer = None
+        self.use_ray = use_ray
 
         # create gym / custom gym like environment
         if isinstance(self.environment, str):
@@ -176,7 +177,43 @@ class SampleManager:
 
         return weights
 
+    def get_data_no_ray(self, total_steps):
+        self.reset_data()
+
+        if total_steps is not None:
+            old_steps = self.total_steps
+            self.total_steps = total_steps
+
+        not_done = True
+        # create list of runnor boxes
+        runner_box = RunnerBox(
+            Agent,
+            self.model,
+            self.env_instance,
+            runner_position=0,
+            returns=self.returns,
+            **self.kwargs,
+        )
+
+        # initial processes
+        if self.run_episodes:
+            run = lambda: runner_box.run_n_episodes(self.runner_steps)
+        else:
+            run = lambda: runner_box.run_n_steps(self.runner_steps)
+
+        # run as long as not yet reached number of total steps
+        while not_done:
+            result, _ = run()
+            not_done = self._store([result])
+
+        if total_steps is not None:
+            self.total_steps = old_steps
+
+        return self.data
+
     def get_data(self, do_print=False, total_steps=None):
+        if not self.use_ray:
+            return self.get_data_no_ray(total_steps)
 
         self.reset_data()
         if total_steps is not None:
@@ -277,18 +314,30 @@ class SampleManager:
         if test:
             self.kwargs['test'] = True
 
-        # get agent specifications from runner box
-        runner_box = RunnerBox.remote(
-            Agent,
-            self.model,
-            self.env_instance,
-            runner_position=0,
-            returns=self.returns,
-            **self.kwargs,
-        )
-        agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
-        agent = Agent(self.model, **agent_kwargs)
+        if self.use_ray:
+            # get agent specifications from runner box
+            runner_box = RunnerBox.remote(
+                Agent,
+                self.model,
+                self.env_instance,
+                runner_position=0,
+                returns=self.returns,
+                **self.kwargs,
+            )
+            agent_kwargs = ray.get(runner_box.get_agent_kwargs.remote())
+        else:
+            # get agent specifications from runner box
+            runner_box = RunnerBox(
+                Agent,
+                self.model,
+                self.env_instance,
+                runner_position=0,
+                returns=self.returns,
+                **self.kwargs,
+            )
+            agent_kwargs = runner_box.get_agent_kwargs()
 
+        agent = Agent(self.model, **agent_kwargs)
         if test:
             self.kwargs['test'] = False
 
@@ -416,7 +465,7 @@ class SampleManager:
         print("saving model...")
         agent.model.save(full_path)
 
-    def load_model(self, path, model_name=None):
+    def load_model(self, path, model_name=None, compile=False):
         if model_name is not None:
             # # TODO:
             print("specific model loading not yet implemented")
@@ -425,9 +474,10 @@ class SampleManager:
         # alweys leads the latest model
         subdirs = all_subdirs_of(path)
         latest_subdir = max(subdirs, key=os.path.getmtime)
+        epoch_offset = int(re.findall(r"_\d+_", latest_subdir)[0][1:-1])  # regex return e.g. ['_25_', '_2021_']
         print("loading model...")
-        model = tf.keras.models.load_model(latest_subdir)
+        model = tf.keras.models.load_model(latest_subdir, compile=compile)
         weights = model.get_weights()
         self.set_agent(weights)
         agent = self.get_agent()
-        return agent
+        return agent, epoch_offset

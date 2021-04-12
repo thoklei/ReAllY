@@ -3,6 +3,7 @@ import os, logging
 # only print error messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import tensorflow as tf
+import tensorflow_probability as tfp
 import numpy as np
 import random
 from scipy.stats import norm, lognorm
@@ -34,7 +35,6 @@ class Agent:
         model_kwargs={},
         test=False,
     ):
-        super(Agent, self).__init__
         #logging.basicConfig(
         #    filename=f"logging/agent.log", level=logging.DEBUG
         #)
@@ -114,7 +114,7 @@ class Agent:
             output["action"] = action
             if return_log_prob:
                 output["log_probability"] = np.log(
-                    [probs[i][a] for i, a in zip(range(logits.shape[0]), action)]
+                    [logits[i][a] for i, a in zip(range(logits.shape[0]), action)]
                 )
 
         elif self.action_sampling_type == "continuous_normal_diagonal":
@@ -122,11 +122,11 @@ class Agent:
             mus, sigmas = network_out["mu"].numpy(), network_out["sigma"].numpy()
             action = norm.rvs(mus, sigmas)
             output["action"] = action
-            logging.warning('action')
-            logging.warning(action)
+            #logging.warning('action')
+            #logging.warning(action)
 
             if return_log_prob:
-                output["log_probability"] = np.sum(norm.logpdf(action, mus, sigmas))
+                output["log_probability"] = norm.logpdf(action, mus, sigmas)
 
         elif self.action_sampling_type == "discrete_policy":
             logits = network_out["policy"]
@@ -190,12 +190,12 @@ class Agent:
         network_out = self.model(state)
         if self.action_sampling_type == 'continuous_normal_diagonal':
             mus, sigmas = network_out["mu"], network_out["sigma"]
-            dist = tf.compat.v1.distributions.Normal(mus, sigmas)
+            dist = tfp.distributions.Normal(mus, sigmas)
             log_prob = dist.log_prob(action)
             if return_entropy:
-                firs_step = tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas))
+                first_step = tf.math.log(tf.constant(np.exp(1), dtype=tf.float32)*(tf.square(sigmas)))
                 second_step = tf.constant(0.5, dtype=tf.float32) * tf.math.log(2*tf.constant(np.pi, dtype=tf.float32))
-                entropy = firs_step * second_step
+                entropy = first_step * second_step
                 return log_prob, entropy
             return log_prob
 
@@ -216,7 +216,7 @@ class Agent:
                 entropy = -tf.reduce_sum(logits * tf.math.log(logits), axis=-1)
                 entropy = tf.expand_dims(entropy, -1)
                 return log_prob, entropy
-            return log_prop
+            return log_prob
 
 
         elif self.action_sampling_type == "discrete_policy":
